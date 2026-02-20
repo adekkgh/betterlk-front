@@ -19,6 +19,6 @@ COPY . .
 RUN npm run build
 
 # Открываем порт 80
-EXPOSE 80
+EXPOSE 3000
 
-CMD ["vite", "--host", "--port", "80"]
+CMD ["vite", "--host", "--port", "3000"]
