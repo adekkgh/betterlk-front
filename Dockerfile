@@ -1,24 +1,25 @@
-# Используем официальный Node.js образ
-FROM node:20
+# ---------- BUILD STAGE ----------
+FROM node:20-alpine AS builder
 
-# Устанавливаем рабочую директорию
 WORKDIR /app
 
-# Копируем package.json и package-lock.json и конфигурационные файлы
 COPY package*.json ./
-COPY svelte.config.js tsconfig.json vite.config.ts ./
-
-# Устанавливаем зависимости
 RUN npm install
-ENV PATH="./node_modules/.bin:$PATH"
 
-# Копируем остальные файлы проекта
 COPY . .
-
-# Собираем проект (опционально для продакшн)
 RUN npm run build
 
-# Открываем порт 80
+
+# ---------- PRODUCTION STAGE ----------
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY --from=builder /app/build ./build
+COPY package*.json ./
+
+RUN npm install --omit=dev
+
 EXPOSE 3000
 
-CMD ["vite", "--host", "--port", "3000"]
+CMD ["node", "build"]
