@@ -1,0 +1,31 @@
+name: Deploy Frontend
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /var/www/betterlk/frontend
+
+            # Подтягиваем изменения
+            git pull origin main
+
+            # Устанавливаем зависимости
+            npm install
+
+            # Собираем продакшн билд
+            npm run build
+
+            echo "Frontend deployed successfully!"
