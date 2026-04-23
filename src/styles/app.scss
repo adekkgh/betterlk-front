@@ -1,0 +1,90 @@
+// fonts
+@import '@fontsource/onest/300.css';
+@import '@fontsource/onest/400.css';
+@import '@fontsource/onest/500.css';
+@import '@fontsource/onest/600.css';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/500.css';
+
+// themes
+[data-theme="light"] {
+  --accent:       #7C5CFC;
+  --accent-light: #EDE8FF;
+  --accent-dark:  #5B3FD4;
+
+  --bg:           #FAFAF8;
+  --bg2:          #F2F1EE;
+  --bg3:          #E8E6E0;
+  --card:         #FFFFFF;
+  --sidebar:      #FFFFFF;
+
+  --text:         #1A1A18;
+  --text2:        #706F6C;
+  --text3:        #A8A7A3;
+
+  --border:       rgba(26, 26, 24, 0.08);
+  --border2:      rgba(26, 26, 24, 0.14);
+
+  --success:      #1DA562;
+  --success-bg:   #E6F7EF;
+  --warning:      #E08A00;
+  --warning-bg:   #FFF3D6;
+  --danger:       #D93535;
+  --danger-bg:    #FDEAEA;
+
+  --shadow:       0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md:    0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+}
+
+[data-theme="dark"] {
+  --accent:       #7C5CFC;
+  --accent-light: #2A2048;
+  --accent-dark:  #5B3FD4;
+
+  --bg:           #111110;
+  --bg2:          #1A1A18;
+  --bg3:          #242422;
+  --card:         #1E1E1C;
+  --sidebar:      #161614;
+
+  --text:         #EEECEA;
+  --text2:        #8E8D89;
+  --text3:        #5C5B57;
+
+  --border:       rgba(255, 255, 252, 0.07);
+  --border2:      rgba(255, 255, 252, 0.12);
+
+  --success:      #1DA562;
+  --success-bg:   #0D2B1D;
+  --warning:      #E08A00;
+  --warning-bg:   #2B1F00;
+  --danger:       #D93535;
+  --danger-bg:    #2B0F0F;
+
+  --shadow:       0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
+  --shadow-md:    0 4px 12px rgba(0,0,0,0.4), 0 2px 4px rgba(0,0,0,0.2);
+}
+
+// typography and general styles
+:root {
+  --font:      'Onest', sans-serif;
+  --mono:      'JetBrains Mono', monospace;
+  --radius-sm: 6px;
+  --radius:    10px;
+  --radius-lg: 16px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  transition: background 0.2s, color 0.2s;
+  line-height: 1.5;
+  font-size: 14px;
+}

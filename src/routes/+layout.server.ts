@@ -1,0 +1,5 @@
+import type { RequestEvent } from '@sveltejs/kit';
+
+export const load = async (event: RequestEvent) => {
+	return { user: event.locals.user ?? null };
+};
