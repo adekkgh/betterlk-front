@@ -244,22 +244,8 @@
 				<span class="logo-text">BetterLK</span>
 			</div>
 			<div class="auth-side__content">
-				<h2>Личный кабинет<br>университета</h2>
+				<h2>Личный кабинет</h2>
 				<p>Задания, журналы, оценки и всё необходимое для учёбы — в одном месте.</p>
-				<div class="auth-side__features">
-					<div class="feature">
-						<div class="feature__icon">📋</div>
-						<span>Домашние задания и проверка</span>
-					</div>
-					<div class="feature">
-						<div class="feature__icon">📊</div>
-						<span>Журнал посещаемости и баллов</span>
-					</div>
-					<div class="feature">
-						<div class="feature__icon">🔔</div>
-						<span>Уведомления о новых заданиях</span>
-					</div>
-				</div>
 			</div>
 		</div>
 	</div>

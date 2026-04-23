@@ -55,7 +55,7 @@
 	// Навигация
 	const navItems = [
 		{ icon: 'dashboard', label: 'Главная',     href: '/',          active: true  },
-		{ icon: 'homework',  label: 'Задания',      href: '/homeworks', badge: 3      },
+		{ icon: 'homework',  label: 'Задания',      href: '/homework', badge: 3      },
 		{ icon: 'journal',   label: 'Журнал',       href: '/journal'                  },
 		{ icon: 'profile',   label: 'Профиль',      href: '/profile'                  },
 	];
@@ -85,7 +85,7 @@
 					</svg>
 					Главная
 				</a>
-				<a href="/homeworks" class="nav-item">
+				<a href="/homework" class="nav-item">
 					<svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor">
 						<path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"/>
 						<path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clip-rule="evenodd"/>
@@ -172,7 +172,7 @@
 			<!-- ПРИВЕТСТВИЕ -->
 			<div class="greeting">
 				<div class="greeting__text">
-					<h1>{getGreeting()}, {$userStore?.name?.split(' ')[0] ?? ''} 👋</h1>
+					<h1>{getGreeting()}, {$userStore?.name?.split(' ')[0] ?? ''}</h1>
 					<p>{getDate()} · {$userStore?.role?.display_name ?? ''}</p>
 				</div>
 			</div>
@@ -194,7 +194,7 @@
 				<div class="block">
 					<div class="block__header">
 						<span class="block__title">Ближайшие задания</span>
-						<a href="/homeworks" class="block__link">Все задания →</a>
+						<a href="/homework" class="block__link">Все задания →</a>
 					</div>
 					<div class="card">
 						<table class="table">

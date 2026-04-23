@@ -14,3 +14,4 @@ export interface User {
 }
 
 export const userStore = writable<User | null>(null);
+export const tokenStore = writable<string | null>(null);
