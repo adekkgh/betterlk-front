@@ -393,7 +393,7 @@
 							class="form-input"
 							class:form-input--error={fieldErrors.email}
 							type="email"
-							placeholder="you@university.ru"
+							placeholder="example@email.com"
 							autocomplete="email"
 							bind:value={email}
 							onkeydown={(e) => e.key === 'Enter' && handleLogin()}
@@ -467,7 +467,7 @@
 							class="form-input"
 							class:form-input--error={fieldErrors.email}
 							type="email"
-							placeholder="you@university.ru"
+							placeholder="example@email.com"
 							autocomplete="email"
 							bind:value={email}
 						/>
@@ -554,7 +554,7 @@
 							class="form-input"
 							class:form-input--error={fieldErrors.email}
 							type="email"
-							placeholder="you@university.ru"
+							placeholder="example@email.com"
 							autocomplete="email"
 							bind:value={email}
 							onkeydown={(e) => e.key === 'Enter' && handleForgot()}

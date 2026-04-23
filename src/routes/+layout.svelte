@@ -3,6 +3,7 @@
 	import { browser } from '$app/environment';
 	import { theme } from '$lib/stores/theme';
 	import { tokenStore, userStore } from '$lib/stores/user';
+	import MobileNav from '$lib/components/mobileNav/MobileNav.svelte';
 
 	export let data;
 
@@ -15,3 +16,4 @@
 </script>
 
 <slot />
+<MobileNav />
