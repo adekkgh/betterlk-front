@@ -1,11 +1,16 @@
 <script lang="ts">
-	import favicon from '$lib/assets/favicon.svg';
+	import '../styles/app.scss';
+	import { browser } from '$app/environment';
+	import { theme } from '$lib/stores/theme';
+	import { userStore } from '$lib/stores/user';
 
-	let { children } = $props();
+	export let data;
+
+	userStore.set(data?.user ?? null);
+
+	if (browser) {
+		document.documentElement.setAttribute('data-theme', $theme);
+	}
 </script>
 
-<svelte:head>
-	<link rel="icon" href={favicon} />
-</svelte:head>
-
-{@render children()}
+<slot />
