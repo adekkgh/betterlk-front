@@ -17,6 +17,7 @@
 		"@eslint/compat": "^2.0.2",
 		"@eslint/js": "^9.39.2",
 		"@sveltejs/adapter-auto": "^7.0.1",
+		"@sveltejs/adapter-node": "^5.5.4",
 		"@sveltejs/adapter-static": "^3.0.10",
 		"@sveltejs/kit": "^2.50.2",
 		"@sveltejs/vite-plugin-svelte": "^6.2.4",
@@ -36,7 +37,6 @@
 	},
 	"dependencies": {
 		"@fontsource/jetbrains-mono": "^5.2.8",
-		"@fontsource/onest": "^5.2.11",
-		"@sveltejs/adapter-node": "^5.5.3"
+		"@fontsource/onest": "^5.2.11"
 	}
 }

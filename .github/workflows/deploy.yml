@@ -28,4 +28,8 @@ jobs:
             # Собираем продакшн билд
             npm run build
 
+            pm2 restart betterlk-frontend || PORT=3000 pm2 start build/index.js --name betterlk-frontend
+            
+            pm2 save
+            
             echo "Frontend deployed successfully!"
