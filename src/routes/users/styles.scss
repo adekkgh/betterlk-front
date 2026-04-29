@@ -137,3 +137,71 @@
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slideUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+
+.group-section {
+  &__title {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 12px;
+  }
+}
+
+.group-select-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+
+  .form-input {
+    flex: 1;
+  }
+}
+
+.current-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text2);
+  margin-top: 8px;
+
+  svg { color: var(--accent); flex-shrink: 0; }
+  strong { color: var(--text); }
+}
+
+.group-section {
+  &__title { font-size: 13.5px; font-weight: 600; color: var(--text); margin-bottom: 12px; }
+}
+
+.group-select-row { display: flex; gap: 8px; align-items: center; .form-input { flex: 1; } }
+
+.current-group { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text2); margin-top: 8px; svg { color: var(--accent); flex-shrink: 0; } strong { color: var(--text); } }
+
+.groups-checklist { display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto; }
+
+.group-check {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; background: var(--bg2);
+  border-radius: var(--radius-sm); cursor: pointer;
+  transition: background 0.15s;
+  &:hover { background: var(--bg3); }
+
+  input { display: none; }
+
+  &__box {
+    width: 18px; height: 18px; border-radius: 5px;
+    border: 1.5px solid var(--border2); background: var(--card);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; transition: all 0.15s; color: white;
+  }
+
+  input:checked ~ &__box {
+    background: var(--accent); border-color: var(--accent);
+  }
+
+  &__info { display: flex; align-items: center; gap: 8px; }
+  &__name { font-size: 13.5px; font-weight: 500; color: var(--text); }
+  &__course { font-size: 11.5px; color: var(--text3); }
+}
+
+.selected-count { font-size: 12.5px; color: var(--text2); margin-top: 8px; strong { color: var(--accent); } }

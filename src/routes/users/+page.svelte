@@ -16,6 +16,7 @@
 		created_at: string;
 		role: Role | null;
 		group: string | null;
+		professor_groups: { id: number; name: string; course: number }[] | null;
 	}
 
 	// --- СОСТОЯНИЕ ---
@@ -33,6 +34,13 @@
 	let roleLoading   = $state(false);
 	let roleError     = $state('');
 	let roleSuccess   = $state('');
+
+	let groups          = $state<{ id: number; name: string; course: number }[]>([]);
+	let selectedGroupId   = $state<number | null>(null);      // для студента
+	let selectedGroupIds  = $state<number[]>([]);              // для профессора
+	let groupLoading      = $state(false);
+	let groupError        = $state('');
+	let groupSuccess      = $state('');
 
 	// --- ФИЛЬТРАЦИЯ ---
 	const filtered = $derived(users.filter(u => {
@@ -56,16 +64,18 @@
 		loading = true;
 		error   = '';
 
-		const [usersRes, rolesRes] = await Promise.all([
+		const [usersRes, rolesRes, groupsRes] = await Promise.all([
 			api<{ data: User[] }>('/users'),
 			api<{ data: Role[] }>('/roles'),
+			api<{ data: any[] }>('/groups'),
 		]);
 
 		loading = false;
 
 		if (usersRes.error) { error = usersRes.error; return; }
-		users = usersRes.data?.data ?? [];
-		roles = rolesRes.data?.data ?? [];
+		users  = usersRes.data?.data ?? [];
+		roles  = rolesRes.data?.data ?? [];
+		groups = groupsRes.data?.data ?? [];
 	}
 
 	onMount(loadData);
@@ -91,11 +101,15 @@
 
 	// --- МОДАЛКА ---
 	function openModal(user: User) {
-		selectedUser = user;
-		newRole      = user.role?.name ?? 'student';
-		roleError    = '';
-		roleSuccess  = '';
-		showModal    = true;
+		selectedUser     = user;
+		newRole          = user.role?.name ?? 'student';
+		selectedGroupId  = groups.find(g => g.name === user.group)?.id ?? null;
+		selectedGroupIds = user.professor_groups?.map(g => g.id) ?? [];
+		roleError        = '';
+		roleSuccess      = '';
+		groupError       = '';
+		groupSuccess     = '';
+		showModal        = true;
 	}
 
 	function closeModal() {
@@ -124,6 +138,32 @@
 		if (err) { roleError = err; return; }
 
 		roleSuccess = 'Роль успешно обновлена';
+		await loadData();
+		selectedUser = users.find(u => u.id === selectedUser!.id) ?? null;
+		setTimeout(() => {
+			closeModal();
+		}, 500);
+	}
+
+	async function handleGroupUpdate() {
+		if (!selectedUser) return;
+		groupLoading = true;
+		groupError   = '';
+		groupSuccess = '';
+
+		const isProfessor = selectedUser.role?.name === 'professor';
+
+		const { error: err } = await api(`/users/${selectedUser.id}/group`, {
+			method: 'PUT',
+			body: isProfessor
+				? { group_ids: selectedGroupIds }
+				: { group_id: selectedGroupId },
+		});
+
+		groupLoading = false;
+		if (err) { groupError = err; return; }
+
+		groupSuccess = 'Группы успешно обновлены';
 		await loadData();
 		selectedUser = users.find(u => u.id === selectedUser!.id) ?? null;
 	}
@@ -163,6 +203,10 @@
 				<a href="/journal" class="nav-item">
 					<svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd"/></svg>
 					Журнал
+				</a>
+				<a href="/groups" class="nav-item">
+					<svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd"/></svg>
+					Группы
 				</a>
 				<a href="/profile" class="nav-item">
 					<svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/></svg>
@@ -343,7 +387,7 @@
 								<td>
 									{#if user.id !== $userStore?.id}
 										<button class="btn btn--ghost btn--sm" onclick={() => openModal(user)}>
-											Изменить роль
+											Изменить
 										</button>
 									{/if}
 								</td>
@@ -390,7 +434,7 @@
 							</div>
 							{#if user.id !== $userStore?.id}
 								<button class="btn btn--ghost btn--sm" style="width:100%;justify-content:center;margin-top:10px;" onclick={() => openModal(user)}>
-									Изменить роль
+									Изменить
 								</button>
 							{/if}
 						</div>
@@ -410,7 +454,7 @@
 	<div class="modal-overlay" onclick={closeModal} role="dialog" aria-modal="true">
 		<div class="modal" onclick={(e) => e.stopPropagation()}>
 			<div class="modal__header">
-				<h2 class="modal__title">Изменить роль</h2>
+				<h2 class="modal__title">Изменить</h2>
 				<button class="modal__close" onclick={closeModal}>
 					<svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
 				</button>
@@ -470,6 +514,97 @@
 						</button>
 					{/each}
 				</div>
+
+				{#if selectedUser.role?.name === 'student' || selectedUser.role?.name === 'professor'}
+					<div class="modal__divider"></div>
+
+					<div class="group-section">
+						<div class="group-section__title">
+							{selectedUser.role.name === 'professor' ? 'Группы преподавателя' : 'Группа студента'}
+						</div>
+
+						{#if groupSuccess}
+							<div class="alert alert--success">
+								<svg width="15" height="15" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+								{groupSuccess}
+							</div>
+						{/if}
+
+						{#if groupError}
+							<div class="alert alert--error">
+								<svg width="15" height="15" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
+								{groupError}
+							</div>
+						{/if}
+
+						{#if selectedUser.role.name === 'student'}
+							<!-- СТУДЕНТ — один селект -->
+							<div class="group-select-row">
+								<select class="form-input" bind:value={selectedGroupId}>
+									<option value={null}>— Без группы —</option>
+									{#each groups as g}
+										<option value={g.id}>{g.name} ({g.course}-й курс)</option>
+									{/each}
+								</select>
+								<button class="btn btn--primary btn--sm" onclick={handleGroupUpdate} disabled={groupLoading}>
+									{#if groupLoading}<span class="spinner"></span>{/if}
+									Сохранить
+								</button>
+							</div>
+
+							{#if selectedUser.group}
+								<div class="current-group">
+									<svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v1h8v-1zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-1a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v1h-3zM4.75 14.094A5.973 5.973 0 004 17v1H1v-1a3 3 0 013.75-2.906z"/></svg>
+									Текущая группа: <strong>{selectedUser.group}</strong>
+								</div>
+							{/if}
+
+						{:else}
+							<!-- ПРЕПОДАВАТЕЛЬ — мультиселект чекбоксами -->
+							<div class="groups-checklist">
+								{#each groups as g}
+									<label class="group-check">
+										<input
+											type="checkbox"
+											checked={selectedGroupIds.includes(g.id)}
+											onchange={(e) => {
+                const checked = (e.target as HTMLInputElement).checked;
+                selectedGroupIds = checked
+                  ? [...selectedGroupIds, g.id]
+                  : selectedGroupIds.filter(id => id !== g.id);
+              }}
+										/>
+										<div class="group-check__box">
+											{#if selectedGroupIds.includes(g.id)}
+												<svg width="10" height="10" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+											{/if}
+										</div>
+										<div class="group-check__info">
+											<span class="group-check__name">{g.name}</span>
+											<span class="group-check__course">{g.course}-й курс</span>
+										</div>
+									</label>
+								{/each}
+							</div>
+
+							{#if selectedGroupIds.length > 0}
+								<div class="selected-count">
+									Выбрано групп: <strong>{selectedGroupIds.length}</strong>
+								</div>
+							{/if}
+
+							<button
+								class="btn btn--primary"
+								style="width:100%;justify-content:center;margin-top:12px;"
+								onclick={handleGroupUpdate}
+								disabled={groupLoading}
+							>
+								{#if groupLoading}<span class="spinner"></span>{/if}
+								Сохранить группы
+							</button>
+						{/if}
+					</div>
+				{/if}
 
 				<div class="modal__footer">
 					<button class="btn btn--ghost" onclick={closeModal}>Отмена</button>
