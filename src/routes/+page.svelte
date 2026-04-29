@@ -1,6 +1,6 @@
 <script lang="ts">
 	import './styles.scss';
-	import { userStore } from '$lib/stores/user';
+	import { homeworksCountStore, userStore } from '$lib/stores/user';
 	import { theme } from '$lib/stores/theme';
 
 	// Получаем инициалы пользователя
@@ -91,7 +91,9 @@
 						<path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clip-rule="evenodd"/>
 					</svg>
 					Задания
-					<span class="nav-badge">3</span>
+					{#if $homeworksCountStore > 0}
+						<span class="nav-badge">{$homeworksCountStore}</span>
+					{/if}
 				</a>
 				<a href="/journal" class="nav-item">
 					<svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor">

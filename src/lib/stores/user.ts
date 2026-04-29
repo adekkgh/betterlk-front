@@ -15,3 +15,4 @@ export interface User {
 
 export const userStore = writable<User | null>(null);
 export const tokenStore = writable<string | null>(null);
+export const homeworksCountStore = writable<number>(0);
