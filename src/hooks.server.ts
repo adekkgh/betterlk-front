@@ -34,6 +34,13 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 	event.locals.user = user as any;
 
+	// loading active homeworks count
+	const { data: hwData } = await api<{ data: any[] }>('/homeworks', { token });
+	const homeworks = hwData?.data ?? [];
+	event.locals.activeHomeworksCount = homeworks.filter(
+		(h: any) => !h.is_expired && !h.submission?.is_checked
+	).length;
+
 	if (isAuthPage) throw redirect(302, '/');
 
 	return resolve(event);

@@ -1,12 +1,8 @@
 declare global {
 	namespace App {
 		interface Locals {
-			user?: {
-				id: number;
-				name: string;
-				email: string;
-				role: { name: string; display_name: string };
-			};
+			user?: Record<string, any>;
+			activeHomeworksCount?: number;
 		}
 	}
 }
