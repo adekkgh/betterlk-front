@@ -330,11 +330,27 @@
 					<svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd"/></svg>
 					Журнал
 				</a>
+				<a href="/groups" class="nav-item">
+					<svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd"/></svg>
+					Группы
+				</a>
 				<a href="/profile" class="nav-item">
 					<svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/></svg>
 					Профиль
 				</a>
 			</div>
+
+			{#if $userStore?.role?.name === 'admin' || $userStore?.role?.name === 'moderator'}
+				<div class="nav-section">
+					<div class="nav-section__label">Управление</div>
+					<a href="/users" class="nav-item">
+						<svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor">
+							<path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z"/>
+						</svg>
+						Пользователи
+					</a>
+				</div>
+			{/if}
 		</nav>
 		<div class="sidebar__footer">
 			<button class="theme-toggle" onclick={() => theme.toggle()}>
