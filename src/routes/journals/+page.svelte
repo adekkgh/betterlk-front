@@ -39,7 +39,7 @@
 	let deleteLoading = $state(false);
 
 	const isStudent = $derived($userStore?.role?.name === 'student');
-	const canManage = $derived(['admin', 'moderator', 'professor'].includes($userStore?.role?.name ?? ''));
+	const canManage = $derived(['admin', 'moderator'].includes($userStore?.role?.name ?? ''));
 	const isAdminOrMod = $derived(['admin', 'moderator'].includes($userStore?.role?.name ?? ''));
 
 	const filtered = $derived(journals.filter(j => {
