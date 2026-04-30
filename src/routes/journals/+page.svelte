@@ -63,23 +63,24 @@
 		loading = true;
 		error   = '';
 
-		const [jRes, sRes, gRes] = await Promise.all([
+		const [jRes, sRes, gRes, uRes] = await Promise.all([
 			api<{ data: Journal[] }>('/journals'),
 			api<{ data: Subject[] }>('/subjects'),
 			api<{ data: Group[] }>('/groups'),
+			api<{ data: any[] }>('/users'),
 		]);
 
-		loading  = false;
+		loading = false;
 		if (jRes.error) { error = jRes.error; return; }
 
 		journals = jRes.data?.data ?? [];
 		subjects = sRes.data?.data ?? [];
 		groups   = gRes.data?.data ?? [];
 
-		// Список преподавателей из журналов
-		const profMap = new Map<number, string>();
-		journals.forEach(j => profMap.set(j.professor.id, j.professor.name));
-		professors = Array.from(profMap.entries()).map(([id, name]) => ({ id, name }));
+		const allUsers = uRes.data?.data ?? [];
+		professors = allUsers
+			.filter((u: any) => u.role?.name === 'professor')
+			.map((u: any) => ({ id: u.id, name: u.name }));
 	}
 
 	onMount(loadAll);
