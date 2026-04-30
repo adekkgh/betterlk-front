@@ -8,13 +8,13 @@
 
 	interface Subject { id: number; name: string; created_at: string; }
 
-	let subjects    = $state<Subject[]>([]);
+	let subjects    = $state<Specialization[]>([]);
 	let loading     = $state(true);
 	let error       = $state('');
 	let search      = $state('');
 
 	let showForm    = $state(false);
-	let editingSubj = $state<Subject | null>(null);
+	let editingSpec = $state<Specialization | null>(null);
 	let formName    = $state('');
 	let formLoading = $state(false);
 	let formError   = $state('');
@@ -28,46 +28,46 @@
 		subjects.filter(s => s.name.toLowerCase().includes(search.toLowerCase()))
 	);
 
-	async function loadSubjects() {
+	async function loadSpecializations() {
 		loading = true;
 		error   = '';
-		const { data, error: err } = await api<{ data: Subject[] }>('/subjects');
+		const { data, error: err } = await api<{ data: Specialization[] }>('/specializations');
 		loading  = false;
 		if (err) { error = err; return; }
 		subjects = data?.data ?? [];
 	}
 
-	onMount(loadSubjects);
+	onMount(loadSpecializations);
 
 	function openForm(subj?: Subject) {
-		editingSubj = subj ?? null;
+		editingSpec = subj ?? null;
 		formName    = subj?.name ?? '';
 		formError   = '';
 		showForm    = true;
 	}
 
 	async function handleFormSubmit() {
-		if (!formName.trim()) { formError = 'Введите название предмета'; return; }
+		if (!formName.trim()) { formError = 'Введите название специальности'; return; }
 		formLoading = true;
 		formError   = '';
 
 		const { error: err } = await api(
-			editingSubj ? `/subjects/${editingSubj.id}` : '/subjects',
-			{ method: editingSubj ? 'PUT' : 'POST', body: { name: formName.trim() } }
+			editingSpec ? `/specializations/${editingSpec.id}` : '/specializations',
+			{ method: editingSpec ? 'PUT' : 'POST', body: { name: formName.trim() } }
 		);
 
 		formLoading = false;
 		if (err) { formError = err; return; }
 		showForm = false;
-		await loadSubjects();
+		await loadSpecializations();
 	}
 
 	async function handleDelete(id: number) {
 		deleteLoading = true;
-		await api(`/subjects/${id}`, { method: 'DELETE' });
+		await api(`/specializations/${id}`, { method: 'DELETE' });
 		deleteLoading = false;
 		deletingId    = null;
-		await loadSubjects();
+		await loadSpecializations();
 	}
 
 	function onKeydown(e: KeyboardEvent) {
@@ -118,11 +118,11 @@
 						<svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v1h8v-1zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-1a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v1h-3zM4.75 14.094A5.973 5.973 0 004 17v1H1v-1a3 3 0 013.75-2.906z"/></svg>
 						Группы
 					</a>
-					<a href="/subjects" class="nav-item nav-item--active">
+					<a href="/subjects" class="nav-item">
 						<svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor"><path d="M9 4.804A7.968 7.968 0 005.5 4c-1.255 0-2.443.29-3.5.804v10A7.969 7.969 0 015.5 14c1.669 0 3.218.51 4.5 1.385A7.962 7.962 0 0114.5 14c1.255 0 2.443.29 3.5.804v-10A7.968 7.968 0 0014.5 4c-1.255 0-2.443.29-3.5.804V12a1 1 0 11-2 0V4.804z"/></svg>
 						Предметы
 					</a>
-					<a href="/specializations" class="nav-item">
+					<a href="/specializations" class="nav-item nav-item--active">
 						<svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor"><path d="M9 4.804A7.968 7.968 0 005.5 4c-1.255 0-2.443.29-3.5.804v10A7.969 7.969 0 015.5 14c1.669 0 3.218.51 4.5 1.385A7.962 7.962 0 0114.5 14c1.255 0 2.443.29 3.5.804v-10A7.968 7.968 0 0014.5 4c-1.255 0-2.443.29-3.5.804V12a1 1 0 11-2 0V4.804z"/></svg>
 						Специальности
 					</a>
@@ -166,16 +166,16 @@
 
 	<main class="main">
 		<header class="topbar">
-			<div class="topbar__title">Предметы</div>
+			<div class="topbar__title">Специальности</div>
 			<div class="topbar__actions">
 				<div class="search-wrap">
 					<svg class="search-icon" width="15" height="15" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/></svg>
-					<input class="search-input" type="text" placeholder="Поиск предмета..." bind:value={search} />
+					<input class="search-input" type="text" placeholder="Поиск специальности..." bind:value={search} />
 				</div>
 				{#if canManage}
 					<button class="btn btn--primary" onclick={() => openForm()}>
 						<svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd"/></svg>
-						Добавить предмет
+						Добавить специальность
 					</button>
 				{/if}
 			</div>
@@ -185,7 +185,7 @@
 			<div class="stats-row">
 				<div class="stat-pill">
 					<span class="stat-pill__value">{subjects.length}</span>
-					<span class="stat-pill__label">предметов всего</span>
+					<span class="stat-pill__label">Специальностей всего</span>
 				</div>
 				{#if search && filtered.length !== subjects.length}
 					<div class="stat-pill">
@@ -198,7 +198,7 @@
 			{#if loading}
 				<div class="state-wrap">
 					<div class="spinner-lg"></div>
-					<p>Загружаем предметы...</p>
+					<p>Загружаем специальности...</p>
 				</div>
 			{:else if error}
 				<div class="state-wrap">
@@ -206,16 +206,16 @@
 						<svg width="24" height="24" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
 					</div>
 					<p>{error}</p>
-					<button class="btn btn--ghost" onclick={loadSubjects}>Попробовать снова</button>
+					<button class="btn btn--ghost" onclick={loadSpecializations}>Попробовать снова</button>
 				</div>
 			{:else if filtered.length === 0}
 				<div class="state-wrap">
 					<div class="state-icon">
 						<svg width="28" height="28" viewBox="0 0 20 20" fill="currentColor"><path d="M9 4.804A7.968 7.968 0 005.5 4c-1.255 0-2.443.29-3.5.804v10A7.969 7.969 0 015.5 14c1.669 0 3.218.51 4.5 1.385A7.962 7.962 0 0114.5 14c1.255 0 2.443.29 3.5.804v-10A7.968 7.968 0 0014.5 4c-1.255 0-2.443.29-3.5.804V12a1 1 0 11-2 0V4.804z"/></svg>
 					</div>
-					<p>{search ? 'Предметы не найдены' : 'Предметов пока нет'}</p>
+					<p>{search ? 'Специальности не найдены' : 'Специальностей пока нет'}</p>
 					{#if canManage && !search}
-						<button class="btn btn--primary" onclick={() => openForm()}>Добавить первый предмет</button>
+						<button class="btn btn--primary" onclick={() => openForm()}>Добавить первую специальность</button>
 					{/if}
 				</div>
 			{:else}
@@ -252,7 +252,7 @@
 	<div class="modal-overlay" onclick={() => showForm = false} role="dialog">
 		<div class="modal modal--sm" onclick={(e) => e.stopPropagation()}>
 			<div class="modal__header">
-				<h2 class="modal__title">{editingSubj ? 'Редактировать предмет' : 'Новый предмет'}</h2>
+				<h2 class="modal__title">{editingSpec ? 'Редактировать специальность' : 'Новая специальность'}</h2>
 				<button class="modal__close" onclick={() => showForm = false}>
 					<svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
 				</button>
@@ -262,7 +262,7 @@
 					<div class="alert alert--error">{formError}</div>
 				{/if}
 				<div class="form-group">
-					<label class="form-label">Название предмета *</label>
+					<label class="form-label">Название специальности *</label>
 					<input
 						class="form-input"
 						type="text"
@@ -276,7 +276,7 @@
 					<button class="btn btn--ghost" onclick={() => showForm = false}>Отмена</button>
 					<button class="btn btn--primary" onclick={handleFormSubmit} disabled={formLoading}>
 						{#if formLoading}<span class="spinner"></span>{/if}
-						{editingSubj ? 'Сохранить' : 'Добавить'}
+						{editingSpec ? 'Сохранить' : 'Добавить'}
 					</button>
 				</div>
 			</div>
@@ -289,14 +289,14 @@
 	<div class="modal-overlay" onclick={() => deletingId = null} role="dialog">
 		<div class="modal modal--sm" onclick={(e) => e.stopPropagation()}>
 			<div class="modal__header">
-				<h2 class="modal__title">Удалить предмет?</h2>
+				<h2 class="modal__title">Удалить специальность?</h2>
 				<button class="modal__close" onclick={() => deletingId = null}>
 					<svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
 				</button>
 			</div>
 			<div class="modal__body">
 				<p style="font-size:14px;color:var(--text2);line-height:1.6;">
-					Все ведомости связанные с этим предметом также будут удалены. Это действие нельзя отменить.
+					Все ведомости связанные с этой специальностью также будут удалены. Это действие нельзя отменить.
 				</p>
 				<div class="modal__footer">
 					<button class="btn btn--ghost" onclick={() => deletingId = null}>Отмена</button>
