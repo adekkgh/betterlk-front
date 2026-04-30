@@ -104,11 +104,7 @@
 				</a>
 				<a href="/journals" class="nav-item">
 					<svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd"/></svg>
-					Журналы
-				</a>
-				<a href="/profile" class="nav-item">
-					<svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/></svg>
-					Профиль
+					Ведомости
 				</a>
 			</div>
 			{#if $userStore?.role?.name === 'admin' || $userStore?.role?.name === 'moderator'}
@@ -125,6 +121,15 @@
 					<a href="/subjects" class="nav-item nav-item--active">
 						<svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor"><path d="M9 4.804A7.968 7.968 0 005.5 4c-1.255 0-2.443.29-3.5.804v10A7.969 7.969 0 015.5 14c1.669 0 3.218.51 4.5 1.385A7.962 7.962 0 0114.5 14c1.255 0 2.443.29 3.5.804v-10A7.968 7.968 0 0014.5 4c-1.255 0-2.443.29-3.5.804V12a1 1 0 11-2 0V4.804z"/></svg>
 						Предметы
+					</a>
+				</div>
+			{/if}
+			{#if $userStore?.role?.name === 'professor'}
+				<div class="nav-section">
+					<div class="nav-section__label">Управление</div>
+					<a href="/groups" class="nav-item">
+						<svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v1h8v-1zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-1a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v1h-3zM4.75 14.094A5.973 5.973 0 004 17v1H1v-1a3 3 0 013.75-2.906z"/></svg>
+						Группы
 					</a>
 				</div>
 			{/if}
@@ -287,7 +292,7 @@
 			</div>
 			<div class="modal__body">
 				<p style="font-size:14px;color:var(--text2);line-height:1.6;">
-					Все журналы связанные с этим предметом также будут удалены. Это действие нельзя отменить.
+					Все ведомости связанные с этим предметом также будут удалены. Это действие нельзя отменить.
 				</p>
 				<div class="modal__footer">
 					<button class="btn btn--ghost" onclick={() => deletingId = null}>Отмена</button>

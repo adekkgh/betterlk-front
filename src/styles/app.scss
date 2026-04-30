@@ -94,3 +94,32 @@ body {
     padding-bottom: 76px !important;
   }
 }
+
+// custom scroll
+html {
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg3) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--bg3);
+  border-radius: 20px;
+  transition: background 0.15s;
+
+  &:hover {
+    background: var(--border2);
+  }
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
