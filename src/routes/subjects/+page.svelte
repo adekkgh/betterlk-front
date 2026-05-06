@@ -249,7 +249,7 @@
 
 <!-- ФОРМА -->
 {#if showForm}
-	<div class="modal-overlay" onclick={() => showForm = false} role="dialog">
+	<div class="modal-overlay" role="dialog">
 		<div class="modal modal--sm" onclick={(e) => e.stopPropagation()}>
 			<div class="modal__header">
 				<h2 class="modal__title">{editingSubj ? 'Редактировать предмет' : 'Новый предмет'}</h2>

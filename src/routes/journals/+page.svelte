@@ -318,7 +318,7 @@
 
 <!-- ФОРМА СОЗДАНИЯ -->
 {#if showForm}
-	<div class="modal-overlay" onclick={() => showForm = false} role="dialog">
+	<div class="modal-overlay" role="dialog">
 		<div class="modal" onclick={(e) => e.stopPropagation()}>
 			<div class="modal__header">
 				<h2 class="modal__title">Создать журнал</h2>
