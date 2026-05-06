@@ -7,8 +7,8 @@
 	import { api } from '$lib/helpers/api';
 
 	interface Student { id: number; name: string; }
-	interface Entry { id?: number; is_absent: boolean; score: number | null; }
-	interface Rating { id?: number; rating_score: number | null; exam_score: number | null; }
+	interface Entry { is_absent: boolean; score: number | null; }
+	interface Rating { rating_score: number | null; exam_score: number | null; }
 	interface JournalData {
 		id: number;
 		subject: { id: number; name: string };
@@ -26,48 +26,40 @@
 	let journal     = $state<JournalData | null>(null);
 	let loading     = $state(true);
 	let error       = $state('');
+	let tableRef    = $state<HTMLDivElement | null>(null);
 
-	// Inline-редактирование ячейки
-	let editingCell = $state<{ studentId: number; date: string } | null>(null);
-	let editAbsent  = $state(false);
-	let editScore   = $state<string>('');
-	let saving      = $state(false);
+	// Локальные изменения — накапливаем до сохранения
+	// Ключ: `${studentId}:${date}`
+	let localChanges = $state<Map<string, Entry>>(new Map());
+	let hasChanges   = $state(false);
+	let saving       = $state(false);
+	let saveError    = $state('');
+	let saveSuccess  = $state('');
 
-	// Редактирование рейтинга — отдельная модалка
-	let editingRating   = $state<number | null>(null); // student_id
+	// Активная ячейка для навигации
+	let activeCell = $state<{ rowIdx: number; colIdx: number } | null>(null);
+
+	// Редактирование рейтинга
+	let editingRating   = $state<number | null>(null);
 	let editRatingScore = $state<string>('');
 	let editExamScore   = $state<string>('');
 	let savingRating    = $state(false);
 	let ratingError     = $state('');
 
-	// Навигация по месяцам
-	let tableRef = $state<HTMLDivElement | null>(null);
-
-	const isStudent = $derived($userStore?.role?.name === 'student');
 	const canEdit   = $derived(['admin', 'moderator', 'professor'].includes($userStore?.role?.name ?? ''));
+	const isStudent = $derived($userStore?.role?.name === 'student');
 
-	// Генерация ВСЕХ дат семестра (только будни)
+	// Все даты семестра
 	const allDates = $derived((() => {
 		if (!journal) return [];
 		const dates: string[] = [];
 		const sem  = journal.semester;
 		const year = journal.year;
-
-		// Используем последний день месяца через day=0 следующего месяца
-		const startDate = sem === 1
-			? new Date(year, 8, 1)       // 1 сентября
-			: new Date(year, 1, 1);      // 1 февраля
-
-		const endDate = sem === 1
-			? new Date(year + 1, 1, 0)   // последний день января (0-й день февраля)
-			: new Date(year, 6, 0);      // последний день июня (0-й день июля)
-
+		const startDate = sem === 1 ? new Date(year, 8, 1)      : new Date(year, 1, 1);
+		const endDate   = sem === 1 ? new Date(year + 1, 1, 0)  : new Date(year, 6, 0);
 		const cur = new Date(startDate);
 		while (cur <= endDate) {
-			const dow = cur.getDay();
-			// 0 = воскресенье, 6 = суббота — исключаем
-			if (dow !== 0 && dow !== 6) {
-				// Безопасное получение локальной строки yyyy-mm-dd
+			if (cur.getDay() !== 0 && cur.getDay() !== 6) {
 				dates.push(cur.toLocaleDateString('sv-SE'));
 			}
 			cur.setDate(cur.getDate() + 1);
@@ -75,10 +67,9 @@
 		return dates;
 	})());
 
-	// Месяцы семестра для навигации
 	const semesterMonths = $derived((() => {
 		if (!journal) return [];
-		const months = journal.semester === 1
+		return journal.semester === 1
 			? [
 				{ label: 'Сентябрь', month: 9,  year: journal.year     },
 				{ label: 'Октябрь',  month: 10, year: journal.year     },
@@ -93,133 +84,209 @@
 				{ label: 'Май',     month: 5, year: journal.year },
 				{ label: 'Июнь',    month: 6, year: journal.year },
 			];
-		return months;
 	})());
 
-	function scrollToMonth(month: number, year: number) {
-		if (!tableRef) return;
-		const targetDate = `${year}-${String(month).padStart(2, '0')}-01`;
-		// Ищем первую дату этого месяца в allDates
-		const firstDate = allDates.find(d => d.startsWith(`${year}-${String(month).padStart(2, '0')}`));
-		if (!firstDate) return;
-		const idx = allDates.indexOf(firstDate);
-		// Каждая ячейка ~44px, колонка имени ~180px
-		const scrollX = idx * 40;
-		tableRef.scrollTo({ left: scrollX, behavior: 'smooth' });
-	}
-
-	function fmtDate(dateStr: string): { day: string; month: string; dow: string; isToday: boolean } {
-		const d    = new Date(dateStr + 'T00:00:00');
-		const dows = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
-		const mons = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
-		const today = new Date().toISOString().split('T')[0];
-		return {
-			day:     String(d.getDate()),
-			month:   mons[d.getMonth()],
-			dow:     dows[d.getDay()],
-			isToday: dateStr === today,
-		};
-	}
-
-	// Группировка дат по месяцам для рендера разделителей
 	function getMonthSpan(dates: string[]): { label: string; count: number }[] {
 		const spans: { label: string; count: number }[] = [];
 		const mons = ['','Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
-		let cur = '';
-		let count = 0;
+		let cur = ''; let count = 0;
 		for (const d of dates) {
-			const m = Number(d.split('-')[1]);
-			const label = mons[m];
-			if (label !== cur) {
-				if (cur) spans.push({ label: cur, count });
-				cur   = label;
-				count = 1;
-			} else {
-				count++;
-			}
+			const label = mons[Number(d.split('-')[1])];
+			if (label !== cur) { if (cur) spans.push({ label: cur, count }); cur = label; count = 1; }
+			else count++;
 		}
 		if (cur) spans.push({ label: cur, count });
 		return spans;
 	}
 
-	function getStats(studentId: number) {
-		const entries = journal?.entries[studentId] ?? {};
-		let totalScore = 0;
-		let absentDays = 0;
+	function fmtDate(dateStr: string) {
+		const d = new Date(dateStr + 'T00:00:00');
+		const dows = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
+		const today = new Date().toLocaleDateString('sv-SE');
+		return { day: String(d.getDate()), dow: dows[d.getDay()], isToday: dateStr === today };
+	}
 
-		for (const e of Object.values(entries)) {
+	function semLabel(sem: 1 | 2) {
+		return sem === 1 ? '1 семестр (сен–янв)' : '2 семестр (фев–июн)';
+	}
+
+	// Получить актуальное значение ячейки (с учётом локальных изменений)
+	function getCell(studentId: number, date: string): Entry {
+		const key = `${studentId}:${date}`;
+		if (localChanges.has(key)) return localChanges.get(key)!;
+		return journal?.entries[studentId]?.[date] ?? { is_absent: false, score: null };
+	}
+
+	function getStats(studentId: number) {
+		const dates = allDates;
+		let totalScore = 0; let absentDays = 0;
+		for (const date of dates) {
+			const e = getCell(studentId, date);
 			if (e.score !== null) totalScore += e.score;
 			if (e.is_absent) absentDays++;
 		}
-
-		const cappedScore  = Math.min(totalScore, 40);
-		const rating       = journal?.ratings[studentId];
-		const ratingScore  = Math.min(rating?.rating_score ?? 0, 30);
-		const examScore    = Math.min(rating?.exam_score   ?? 0, 30);
-		const grandTotal   = cappedScore + ratingScore + examScore;
-
-		return { totalScore, cappedScore, absentDays, absentHours: absentDays * 2, ratingScore, examScore, grandTotal };
+		const cappedScore = Math.min(totalScore, 40);
+		const rating      = journal?.ratings[studentId];
+		const rScore      = Math.min(rating?.rating_score ?? 0, 30);
+		const eScore      = Math.min(rating?.exam_score   ?? 0, 30);
+		return { totalScore, cappedScore, absentDays, absentHours: absentDays * 2, grandTotal: cappedScore + rScore + eScore };
 	}
 
 	async function loadJournal() {
-		loading = true;
-		error   = '';
+		loading = true; error = '';
 		const { data, error: err } = await api<{ data: JournalData }>(`/journals/${journalId}`);
 		loading = false;
 		if (err) { error = err; return; }
 		journal = data?.data ?? null;
+		localChanges = new Map();
+		hasChanges   = false;
 	}
 
 	onMount(loadJournal);
 
-	// Открытие ячейки
-	function openCell(studentId: number, date: string) {
-		if (!canEdit) return;
-		// Если кликнули на ту же ячейку — закрываем
-		if (editingCell?.studentId === studentId && editingCell?.date === date) {
-			editingCell = null;
-			return;
+	// Установить значение ячейки
+	function setCell(studentId: number, date: string, entry: Entry) {
+		const key = `${studentId}:${date}`;
+		const orig = journal?.entries[studentId]?.[date] ?? { is_absent: false, score: null };
+		// Если совпадает с оригиналом — убираем из изменений
+		if (entry.is_absent === orig.is_absent && entry.score === orig.score) {
+			localChanges.delete(key);
+		} else {
+			localChanges.set(key, entry);
 		}
-		const entry = journal?.entries[studentId]?.[date];
-		editingCell = { studentId, date };
-		editAbsent  = entry?.is_absent ?? false;
-		editScore   = entry?.score != null ? String(entry.score) : '';
+		localChanges = new Map(localChanges);
+		hasChanges   = localChanges.size > 0;
+		saveSuccess  = '';
 	}
 
-	async function saveCell() {
-		if (!editingCell || !journal) return;
-		saving = true;
+	// Сохранить все изменения
+	async function saveChanges() {
+		if (!journal || localChanges.size === 0) return;
+		saving    = true;
+		saveError = '';
 
-		const score = String(editScore).trim() !== '' ? Number(editScore) : null;
+		const entries = Array.from(localChanges.entries()).map(([key, entry]) => {
+			const [studentId, date] = key.split(':');
+			return {
+				student_id: Number(studentId),
+				date,
+				is_absent:  entry.is_absent,
+				score:      entry.score,
+			};
+		});
 
-		const { error: err } = await api(`/journals/${journal.id}/entry`, {
+		const { error: err } = await api(`/journals/${journal.id}/entries/batch`, {
 			method: 'POST',
-			body: {
-				student_id: editingCell.studentId,
-				date:       editingCell.date,
-				is_absent:  editAbsent,
-				score,
-			},
+			body: { entries },
 		});
 
 		saving = false;
-		if (err) { return; }
+		if (err) { saveError = err; return; }
 
-		if (!journal.entries[editingCell.studentId]) {
-			journal.entries[editingCell.studentId] = {};
+		// Применяем изменения в журнал
+		for (const [key, entry] of localChanges.entries()) {
+			const [studentId, date] = key.split(':');
+			const sid = Number(studentId);
+			if (!journal.entries[sid]) journal.entries[sid] = {};
+			if (!entry.is_absent && entry.score === null) {
+				delete journal.entries[sid][date];
+			} else {
+				journal.entries[sid][date] = entry;
+			}
 		}
-
-		if (!editAbsent && score === null) {
-			delete journal.entries[editingCell.studentId][editingCell.date];
-		} else {
-			journal.entries[editingCell.studentId][editingCell.date] = { is_absent: editAbsent, score };
-		}
-
-		journal = { ...journal };
-		editingCell = null;
+		journal      = { ...journal };
+		localChanges = new Map();
+		hasChanges   = false;
+		saveSuccess  = 'Изменения сохранены';
+		setTimeout(() => saveSuccess = '', 3000);
 	}
 
-	// Модалка рейтинга
+	function discardChanges() {
+		localChanges = new Map();
+		hasChanges   = false;
+		saveError    = '';
+	}
+
+	// Навигация стрелками
+	function scrollToMonth(month: number, year: number) {
+		if (!tableRef) return;
+		const firstDate = allDates.find(d => d.startsWith(`${year}-${String(month).padStart(2, '0')}`));
+		if (!firstDate) return;
+		const idx = allDates.indexOf(firstDate);
+		tableRef.scrollTo({ left: idx * 40, behavior: 'smooth' });
+	}
+
+	function activateCell(rowIdx: number, colIdx: number) {
+		if (!canEdit || !journal) return;
+		if (rowIdx < 0 || rowIdx >= journal.students.length) return;
+		if (colIdx < 0 || colIdx >= allDates.length) return;
+		activeCell = { rowIdx, colIdx };
+		// Скролл к ячейке
+		const cellEl = tableRef?.querySelector(`[data-row="${rowIdx}"][data-col="${colIdx}"]`) as HTMLElement;
+		cellEl?.focus();
+	}
+
+	function handleCellKeydown(e: KeyboardEvent, rowIdx: number, colIdx: number) {
+		if (!canEdit || !journal) return;
+		const student = journal.students[rowIdx];
+		const date    = allDates[colIdx];
+		const current = getCell(student.id, date);
+
+		switch (e.key) {
+			case 'ArrowRight':
+				e.preventDefault();
+				activateCell(rowIdx, colIdx + 1);
+				break;
+			case 'ArrowLeft':
+				e.preventDefault();
+				activateCell(rowIdx, colIdx - 1);
+				break;
+			case 'ArrowDown':
+				e.preventDefault();
+				activateCell(rowIdx + 1, colIdx);
+				break;
+			case 'ArrowUp':
+				e.preventDefault();
+				activateCell(rowIdx - 1, colIdx);
+				break;
+			case 'Tab':
+				e.preventDefault();
+				if (e.shiftKey) {
+					if (colIdx > 0) activateCell(rowIdx, colIdx - 1);
+					else activateCell(rowIdx - 1, allDates.length - 1);
+				} else {
+					if (colIdx < allDates.length - 1) activateCell(rowIdx, colIdx + 1);
+					else activateCell(rowIdx + 1, 0);
+				}
+				break;
+			case 'Escape':
+				activeCell = null;
+				(e.target as HTMLElement).blur();
+				break;
+			case 'Backspace':
+			case 'Delete':
+				e.preventDefault();
+				setCell(student.id, date, { is_absent: false, score: null });
+				break;
+			default:
+				// Цифры 0-9
+				if (e.key >= '0' && e.key <= '9') {
+					e.preventDefault();
+					const newScore = current.score === null
+						? Number(e.key)
+						: Math.min(Number(String(current.score) + e.key), 100);
+					setCell(student.id, date, { ...current, score: newScore });
+				}
+				// Буква Н (русская) или n (латинская) — переключить пропуск
+				if (e.key === 'н' || e.key === 'Н' || e.key === 'n' || e.key === 'N') {
+					e.preventDefault();
+					setCell(student.id, date, { ...current, is_absent: !current.is_absent });
+				}
+				break;
+		}
+	}
+
+	// Рейтинг
 	function openRatingModal(studentId: number) {
 		if (!canEdit) return;
 		const r = journal?.ratings[studentId];
@@ -231,63 +298,35 @@
 
 	async function saveRating() {
 		if (editingRating === null || !journal) return;
-
 		const rScore = String(editRatingScore).trim() !== '' ? Number(editRatingScore) : null;
 		const eScore = String(editExamScore).trim()   !== '' ? Number(editExamScore)   : null;
-
-		// Валидация
-		if (rScore !== null && (rScore < 0 || rScore > 30)) {
-			ratingError = 'Рейтинговая работа: максимум 30 баллов';
-			return;
-		}
-		if (eScore !== null && (eScore < 0 || eScore > 30)) {
-			ratingError = 'Экзамен: максимум 30 баллов';
-			return;
-		}
-
-		savingRating = true;
-		ratingError  = '';
-
+		if (rScore !== null && (rScore < 0 || rScore > 30)) { ratingError = 'Рейтинговая работа: максимум 30'; return; }
+		if (eScore !== null && (eScore < 0 || eScore > 30)) { ratingError = 'Экзамен: максимум 30'; return; }
+		savingRating = true; ratingError = '';
 		const { error: err } = await api(`/journals/${journal.id}/rating`, {
 			method: 'POST',
-			body: {
-				student_id:   editingRating,
-				rating_score: rScore,
-				exam_score:   eScore,
-			},
+			body: { student_id: editingRating, rating_score: rScore, exam_score: eScore },
 		});
-
 		savingRating = false;
 		if (err) { ratingError = err; return; }
-
-		if (!journal.ratings[editingRating]) {
-			journal.ratings[editingRating] = { rating_score: null, exam_score: null };
-		}
+		if (!journal.ratings[editingRating]) journal.ratings[editingRating] = { rating_score: null, exam_score: null };
 		journal.ratings[editingRating].rating_score = rScore;
 		journal.ratings[editingRating].exam_score   = eScore;
 		journal = { ...journal };
 		editingRating = null;
 	}
 
-	function onKeydown(e: KeyboardEvent) {
-		if (e.key === 'Escape') {
-			editingCell   = null;
-			editingRating = null;
-		}
-		if (e.key === 'Enter' && editingRating !== null) saveRating();
-	}
-
-	function semLabel(sem: 1 | 2) {
-		return sem === 1 ? '1 семестр (сен–янв)' : '2 семестр (фев–июн)';
-	}
-
-	// Студент для модалки рейтинга
 	const editingStudent = $derived(
 		editingRating !== null ? journal?.students.find(s => s.id === editingRating) : null
 	);
+
+	function onGlobalKeydown(e: KeyboardEvent) {
+		if (e.key === 'Escape') { editingRating = null; activeCell = null; }
+		if (e.key === 'Enter' && editingRating !== null) saveRating();
+	}
 </script>
 
-<svelte:window onkeydown={onKeydown} />
+<svelte:window onkeydown={onGlobalKeydown} />
 
 <div class="layout">
 	<aside class="sidebar">
@@ -335,7 +374,7 @@
 						Предметы
 					</a>
 					<a href="/specializations" class="nav-item">
-						<svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor"><path d="M9 4.804A7.968 7.968 0 005.5 4c-1.255 0-2.443.29-3.5.804v10A7.969 7.969 0 015.5 14c1.669 0 3.218.51 4.5 1.385A7.962 7.962 0 0114.5 14c1.255 0 2.443.29 3.5.804v-10A7.968 7.968 0 0014.5 4c-1.255 0-2.443.29-3.5.804V12a1 1 0 11-2 0V4.804z"/></svg>
+						<svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 6V5a3 3 0 013-3h2a3 3 0 013 3v1h2a2 2 0 012 2v3.57A22.952 22.952 0 0110 13a22.95 22.95 0 01-8-1.43V8a2 2 0 012-2h2zm2-1a1 1 0 011-1h2a1 1 0 011 1v1H8V5zm1 5a1 1 0 011-1h.01a1 1 0 110 2H10a1 1 0 01-1-1z" clip-rule="evenodd"/><path d="M2 13.692V16a2 2 0 002 2h12a2 2 0 002-2v-2.308A24.974 24.974 0 0110 15c-2.796 0-5.487-.46-8-1.308z"/></svg>
 						Специальности
 					</a>
 				</div>
@@ -397,7 +436,7 @@
 			{#if loading}
 				<div class="state-wrap">
 					<div class="spinner-lg"></div>
-					<p>Загружаем журнал...</p>
+					<p>Загружаем ведомость...</p>
 				</div>
 			{:else if error}
 				<div class="state-wrap">
@@ -412,24 +451,21 @@
 				<div class="month-nav">
 					<span class="month-nav__label">Перейти к:</span>
 					{#each semesterMonths as m}
-						<button class="month-btn" onclick={() => scrollToMonth(m.month, m.year)}>
-							{m.label}
-						</button>
+						<button class="month-btn" onclick={() => scrollToMonth(m.month, m.year)}>{m.label}</button>
 					{/each}
 				</div>
 
 				{#if canEdit}
 					<div class="hint">
 						<svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/></svg>
-						Нажмите на ячейку чтобы выставить балл или пропуск · Колонки «РР» и «Экз» открываются кликом
+						Кликните на ячейку чтобы начать ввод · Стрелки — навигация · Цифры — балл · <strong>Н</strong> — пропуск · <strong>Delete</strong> — очистить
 					</div>
 				{/if}
 
-				<!-- Обёртка таблицы -->
+				<!-- ТАБЛИЦА -->
 				<div class="table-wrap" bind:this={tableRef}>
 					<table class="journal-table">
 						<thead>
-						<!-- Строка месяцев -->
 						<tr class="tr-months">
 							<th class="th-name-spacer" rowspan="2"></th>
 							{#each getMonthSpan(allDates) as span}
@@ -438,7 +474,6 @@
 							<th class="th-special-header" colspan="2">Итоговые</th>
 							<th class="th-stat-header" colspan="3">Статистика</th>
 						</tr>
-						<!-- Строка дат -->
 						<tr class="tr-dates">
 							{#each allDates as date}
 								{@const fd = fmtDate(date)}
@@ -455,148 +490,112 @@
 						</tr>
 						</thead>
 						<tbody>
-						{#each journal.students as student}
+						{#each journal.students as student, rowIdx}
 							{@const stats = getStats(student.id)}
 							{@const rating = journal.ratings[student.id]}
 							<tr>
 								<td class="td-name">
 									<div class="student-cell">
-										<div class="student-avatar">
-											{student.name.split(' ').map((w: string) => w[0]).join('').slice(0,2).toUpperCase()}
-										</div>
+										<div class="student-avatar">{student.name.split(' ').map((w: string) => w[0]).join('').slice(0,2).toUpperCase()}</div>
 										<span class="student-name">{student.name}</span>
 									</div>
 								</td>
 
-								{#each allDates as date}
-									{@const entry = journal.entries[student.id]?.[date]}
-									{@const isEditing = editingCell?.studentId === student.id && editingCell?.date === date}
+								{#each allDates as date, colIdx}
+									{@const cell = getCell(student.id, date)}
+									{@const isActive = activeCell?.rowIdx === rowIdx && activeCell?.colIdx === colIdx}
+									{@const isChanged = localChanges.has(`${student.id}:${date}`)}
+									{@const fd = fmtDate(date)}
 									<td
 										class="td-cell"
-										class:td-cell--absent={entry?.is_absent && entry?.score == null}
-										class:td-cell--score={entry?.score != null && !entry?.is_absent}
-										class:td-cell--both={entry?.is_absent && entry?.score != null}
-										class:td-cell--editing={isEditing}
-										class:td-cell--editable={canEdit && !isEditing}
-										class:td-cell--today={fmtDate(date).isToday}
-										onclick={() => openCell(student.id, date)}
+										class:td-cell--absent={cell.is_absent && cell.score == null}
+										class:td-cell--score={cell.score != null && !cell.is_absent}
+										class:td-cell--both={cell.is_absent && cell.score != null}
+										class:td-cell--active={isActive}
+										class:td-cell--changed={isChanged && !isActive}
+										class:td-cell--editable={canEdit}
+										class:td-cell--today={fd.isToday}
+										data-row={rowIdx}
+										data-col={colIdx}
+										tabindex={canEdit ? 0 : -1}
+										onclick={() => activateCell(rowIdx, colIdx)}
+										onkeydown={(e) => handleCellKeydown(e, rowIdx, colIdx)}
 									>
-										{#if isEditing}
-											<div class="cell-editor" onclick={(e) => e.stopPropagation()}>
-												<div class="cell-editor__row">
-													<label class="absent-toggle" class:absent-toggle--on={editAbsent}>
-														<input type="checkbox" bind:checked={editAbsent} />
-														Н
-													</label>
-													<input
-														class="score-input"
-														type="number"
-														min="0"
-														max="100"
-														placeholder="—"
-														bind:value={editScore}
-														autofocus
-													/>
-												</div>
-												<div class="cell-editor__actions">
-													<button class="ce-btn ce-btn--save" onclick={saveCell} disabled={saving}>
-														{#if saving}
-															<span class="spinner-xs"></span>
-														{:else}
-															<svg width="11" height="11" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
-															Сохр.
-														{/if}
-													</button>
-													<button class="ce-btn ce-btn--cancel" onclick={() => editingCell = null}>
-														Отмена
-													</button>
-												</div>
-											</div>
-										{:else if entry}
-											<div class="cell-content">
-												{#if entry.is_absent}
-													<span class="cell-tag cell-tag--absent">Н</span>
-												{/if}
-												{#if entry.score != null}
-													<span class="cell-tag cell-tag--score">{entry.score}</span>
-												{/if}
-											</div>
-										{/if}
+										<div class="cell-content">
+											{#if cell.is_absent}
+												<span class="cell-tag cell-tag--absent">Н</span>
+											{/if}
+											{#if cell.score != null}
+												<span class="cell-tag cell-tag--score">{cell.score}</span>
+											{/if}
+										</div>
 									</td>
 								{/each}
 
-								<!-- Рейтинговая работа -->
-								<td
-									class="td-special"
-									class:td-special--editable={canEdit}
-									onclick={() => openRatingModal(student.id)}
-								>
-										<span class:has-value={rating?.rating_score != null}>
-											{rating?.rating_score ?? '—'}
-										</span>
+								<td class="td-special td-special--editable" onclick={() => openRatingModal(student.id)}>
+									<span class:has-value={rating?.rating_score != null}>{rating?.rating_score ?? '—'}</span>
 								</td>
-
-								<!-- Экзамен -->
-								<td
-									class="td-special"
-									class:td-special--editable={canEdit}
-									onclick={() => openRatingModal(student.id)}
-								>
-										<span class:has-value={rating?.exam_score != null}>
-											{rating?.exam_score ?? '—'}
-										</span>
+								<td class="td-special td-special--editable" onclick={() => openRatingModal(student.id)}>
+									<span class:has-value={rating?.exam_score != null}>{rating?.exam_score ?? '—'}</span>
 								</td>
-
-								<!-- Итого -->
 								<td class="td-stat">
-									<div
-										class="stat-total"
-										class:stat-total--good={stats.grandTotal >= 60}
-										class:stat-total--warn={stats.grandTotal >= 40 && stats.grandTotal < 60}
-										class:stat-total--bad={stats.grandTotal > 0 && stats.grandTotal < 40}
-									>
+									<div class="stat-total"
+											 class:stat-total--good={stats.grandTotal >= 60}
+											 class:stat-total--warn={stats.grandTotal >= 40 && stats.grandTotal < 60}
+											 class:stat-total--bad={stats.grandTotal > 0 && stats.grandTotal < 40}>
 										{stats.grandTotal}
-										{#if stats.totalScore > 40}
-											<span class="stat-cap" title="Баллы за задания ограничены 40">*</span>
-										{/if}
+										{#if stats.totalScore > 40}<span class="stat-cap" title="Ограничено 40">*</span>{/if}
 									</div>
 								</td>
-
-								<td class="td-stat">
-									<span class:stat-warn={stats.absentDays > 0}>{stats.absentDays}</span>
-								</td>
-
-								<td class="td-stat">
-									<span class:stat-warn={stats.absentHours > 0}>{stats.absentHours}</span>
-								</td>
+								<td class="td-stat"><span class:stat-warn={stats.absentDays > 0}>{stats.absentDays}</span></td>
+								<td class="td-stat"><span class:stat-warn={stats.absentHours > 0}>{stats.absentHours}</span></td>
 							</tr>
 						{/each}
 						</tbody>
 					</table>
 				</div>
 
+				<!-- ПАНЕЛЬ СОХРАНЕНИЯ -->
+				{#if canEdit}
+					<div class="save-bar" class:save-bar--visible={hasChanges || saveSuccess || saveError}>
+						{#if saveError}
+							<span class="save-bar__error">{saveError}</span>
+						{:else if saveSuccess}
+							<span class="save-bar__success">
+								<svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+								{saveSuccess}
+							</span>
+						{:else}
+							<span class="save-bar__count">
+								Несохранённых изменений: <strong>{localChanges.size}</strong>
+							</span>
+						{/if}
+						<div class="save-bar__actions">
+							{#if hasChanges}
+								<button class="btn btn--ghost btn--sm" onclick={discardChanges}>Отменить</button>
+								<button class="btn btn--primary btn--sm" onclick={saveChanges} disabled={saving}>
+									{#if saving}<span class="spinner"></span>{/if}
+									Сохранить изменения
+								</button>
+							{/if}
+						</div>
+					</div>
+				{/if}
+
 				<!-- Легенда -->
 				<div class="legend">
+					<div class="legend__item"><span class="cell-tag cell-tag--absent">Н</span> Пропуск</div>
+					<div class="legend__item"><span class="cell-tag cell-tag--score">8</span> Балл</div>
 					<div class="legend__item">
-						<span class="cell-tag cell-tag--absent">Н</span>
-						Пропуск
-					</div>
-					<div class="legend__item">
-						<span class="cell-tag cell-tag--score">8</span>
-						Балл
-					</div>
-					<div class="legend__item">
-						<span class="legend__both">
+						<span style="display:flex;gap:2px;">
 							<span class="cell-tag cell-tag--absent">Н</span>
 							<span class="cell-tag cell-tag--score">5</span>
 						</span>
 						Пропуск + балл
 					</div>
+					<div class="legend__item"><span class="legend__changed"></span> Изменено, не сохранено</div>
 					{#if journal.students.some(s => getStats(s.id).totalScore > 40)}
-						<div class="legend__item">
-							<span class="stat-cap">*</span>
-							Баллы за задания ограничены 40 при подсчёте итога
-						</div>
+						<div class="legend__item"><span class="stat-cap">*</span> Баллы ограничены 40 при подсчёте</div>
 					{/if}
 				</div>
 			{/if}
@@ -606,7 +605,7 @@
 
 <!-- МОДАЛКА РЕЙТИНГА -->
 {#if editingRating !== null && editingStudent}
-	<div class="modal-overlay" onclick={() => editingRating = null} role="dialog" aria-modal="true">
+	<div class="modal-overlay" role="dialog" aria-modal="true">
 		<div class="modal" onclick={(e) => e.stopPropagation()}>
 			<div class="modal__header">
 				<div>
@@ -618,72 +617,30 @@
 				</button>
 			</div>
 			<div class="modal__body">
-				{#if ratingError}
-					<div class="alert alert--error">{ratingError}</div>
-				{/if}
-
+				{#if ratingError}<div class="alert alert--error">{ratingError}</div>{/if}
 				<div class="rating-fields">
 					<div class="rating-field">
-						<label class="rating-field__label">
-							Рейтинговая работа
-							<span class="rating-field__max">макс. 30</span>
-						</label>
-						<input
-							class="rating-field__input"
-							type="number"
-							min="0"
-							max="30"
-							placeholder="Не выставлено"
-							bind:value={editRatingScore}
-						/>
+						<label class="rating-field__label">Рейтинговая работа <span class="rating-field__max">макс. 30</span></label>
+						<input class="rating-field__input" type="number" min="0" max="30" placeholder="Не выставлено" bind:value={editRatingScore} />
 					</div>
 					<div class="rating-field">
-						<label class="rating-field__label">
-							Экзамен
-							<span class="rating-field__max">макс. 30</span>
-						</label>
-						<input
-							class="rating-field__input"
-							type="number"
-							min="0"
-							max="30"
-							placeholder="Не выставлено"
-							bind:value={editExamScore}
-						/>
+						<label class="rating-field__label">Экзамен <span class="rating-field__max">макс. 30</span></label>
+						<input class="rating-field__input" type="number" min="0" max="30" placeholder="Не выставлено" bind:value={editExamScore} />
 					</div>
 				</div>
-
-				<!-- Текущая статистика -->
 				{#if editingRating !== null}
 					{@const stats = getStats(editingRating)}
 					<div class="rating-preview">
-						<div class="rating-preview__row">
-							<span>Баллы за семестр</span>
-							<span class="rating-preview__val">
-        {stats.cappedScore}
-								{#if stats.totalScore > 40}
-          <span class="stat-cap" title="Ограничено 40"> (из {stats.totalScore})*</span>
-        {/if}
-      </span>
-						</div>
-						<div class="rating-preview__row">
-							<span>Рейтинговая работа</span>
-							<span class="rating-preview__val">{editRatingScore || '—'}</span>
-						</div>
-						<div class="rating-preview__row">
-							<span>Экзамен</span>
-							<span class="rating-preview__val">{editExamScore || '—'}</span>
-						</div>
+						<div class="rating-preview__row"><span>Баллы за семестр</span><span class="rating-preview__val">{stats.cappedScore}{#if stats.totalScore > 40}<span class="stat-cap"> (из {stats.totalScore})*</span>{/if}</span></div>
+						<div class="rating-preview__row"><span>Рейтинговая работа</span><span class="rating-preview__val">{editRatingScore || '—'}</span></div>
+						<div class="rating-preview__row"><span>Экзамен</span><span class="rating-preview__val">{editExamScore || '—'}</span></div>
 						<div class="rating-preview__divider"></div>
 						<div class="rating-preview__row rating-preview__row--total">
 							<span>Итого</span>
-							<span class="rating-preview__total">
-        {stats.cappedScore + Math.min(Number(editRatingScore) || 0, 30) + Math.min(Number(editExamScore) || 0, 30)} / 100
-      </span>
+							<span class="rating-preview__total">{stats.cappedScore + Math.min(Number(editRatingScore)||0,30) + Math.min(Number(editExamScore)||0,30)} / 100</span>
 						</div>
 					</div>
 				{/if}
-
 				<div class="modal__footer">
 					<button class="btn btn--ghost" onclick={() => editingRating = null}>Отмена</button>
 					<button class="btn btn--primary" onclick={saveRating} disabled={savingRating}>

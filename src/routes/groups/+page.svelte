@@ -367,7 +367,7 @@
 
 <!-- МОДАЛКА СОЗДАНИЯ/РЕДАКТИРОВАНИЯ -->
 {#if showForm}
-	<div class="modal-overlay" onclick={() => showForm = false} role="dialog">
+	<div class="modal-overlay" role="dialog">
 		<div class="modal" onclick={(e) => e.stopPropagation()}>
 			<div class="modal__header">
 				<h2 class="modal__title">{editingGroup ? 'Редактировать группу' : 'Новая группа'}</h2>
