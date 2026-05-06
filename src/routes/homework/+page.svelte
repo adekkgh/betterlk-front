@@ -4,6 +4,7 @@
 	import { homeworksCountStore, userStore } from '$lib/stores/user';
 	import { theme } from '$lib/stores/theme';
 	import { api } from '$lib/helpers/api';
+	import { page } from '$app/stores';
 
 	interface Group { id: number; name: string; course: number; }
 	interface Creator { id: number; name: string; }
@@ -31,6 +32,7 @@
 		creator: Creator;
 		submission: Submission | null;
 		submissions?: Submission[];
+		subject: { id: number; name: string } | null;
 	}
 
 	let homeworks     = $state<Homework[]>([]);
@@ -62,6 +64,8 @@
 	let expandedSubmissionId = $state<number | null>(null);
 	let lightboxUrl  = $state<string | null>(null);
 	let lightboxName = $state<string>('');
+	let formSubjectId = $state<number | null>(null);
+	let mySubjects    = $state<{ id: number; name: string }[]>([]);
 
 	const isStudent = $derived($userStore?.role?.name === 'student');
 	const canManage = $derived(['admin', 'moderator', 'professor'].includes($userStore?.role?.name ?? ''));
@@ -88,11 +92,22 @@
 		if (err) { error = err; return; }
 		homeworks = data?.data ?? [];
 		homeworksCountStore.set(homeworks.filter(h => !h.is_expired && !h.submission?.is_checked).length);
+
+		// Открываем задание если передан параметр ?open=ID
+		const openId = Number($page.url.searchParams.get('open'));
+		if (openId) {
+			const hw = homeworks.find(h => h.id === openId);
+			if (hw) openHw(hw);
+		}
 	}
 
 	async function loadGroups() {
-		const { data } = await api<{ data: Group[] }>('/groups');
-		groups = data?.data ?? [];
+		const [groupsRes, subjectsRes] = await Promise.all([
+			api<{ data: any[] }>('/groups'),
+			api<{ data: any[] }>('/me/subjects'),
+		]);
+		groups     = groupsRes.data?.data ?? [];
+		mySubjects = subjectsRes.data?.data ?? [];
 	}
 
 	onMount(() => {
@@ -125,7 +140,7 @@
 		if (hw.is_expired)             return { label: 'Просрочено', color: 'danger' };
 		const days = daysLeft(hw);
 		if (days <= 2)                 return { label: 'Срочно', color: 'danger' };
-		if (hw.submission)             return { label: 'Сдано', color: 'accent' };
+		if (hw.submission)             return { label: 'Ожидает проверки', color: 'accent' };
 		if (days <= 5)                 return { label: 'Скоро дедлайн', color: 'warning' };
 		return { label: 'Не начато', color: 'neutral' };
 	}
@@ -251,6 +266,7 @@
 		formDesc     = hw?.description ?? '';
 		formMaxScore = hw?.max_score ?? 100;
 		formGroupId  = hw?.group?.id ?? null;
+		formSubjectId  = hw?.subject?.id ?? null;
 		formDeadline = hw
 			? (() => {
 				const d = new Date(hw.deadline_extended && hw.extended_deadline
@@ -265,7 +281,7 @@
 	}
 
 	async function handleFormSubmit() {
-		if (!formTitle || !formDeadline || (!formGroupId && !editingHw)) {
+		if (!formTitle || !formSubjectId || !formDeadline || (!formGroupId && !editingHw)) {
 			formError = 'Заполните все обязательные поля';
 			return;
 		}
@@ -275,6 +291,7 @@
 		const body: Record<string, unknown> = {
 			title: formTitle, description: formDesc || null,
 			max_score: formMaxScore, deadline: formDeadline,
+			subject_id:  formSubjectId,
 		};
 		if (!editingHw) body.group_id = formGroupId;
 
@@ -294,6 +311,23 @@
 		await api(`/homeworks/${id}`, { method: 'DELETE' });
 		await loadHomeworks();
 		closeModal();
+	}
+
+	async function handleRecheck(submissionId: number) {
+		if (!selectedHw) return;
+		checkLoading = true;
+
+		const { error: err } = await api(`/submissions/${submissionId}/recheck`, {
+			method: 'POST',
+		});
+
+		checkLoading = false;
+		if (err) { submitError = err; return; }
+
+		await loadHomeworks();
+		selectedHw = homeworks.find(h => h.id === selectedHw!.id) ?? null;
+		// Сбрасываем expandedSubmissionId чтобы карточка обновилась
+		expandedSubmissionId = null;
 	}
 
 	function onKeydown(e: KeyboardEvent) {
@@ -459,7 +493,13 @@
 								{@const status = getStatus(hw)}
 								<button class="hw-card" onclick={() => openHw(hw)}>
 									<div class="hw-card__top">
-										<div class="hw-card__subject">{hw.group.name}</div>
+										<div class="hw-card__subject">
+											{#if hw.subject}
+												{hw.subject.name} · {hw.group.name}
+											{:else}
+												{hw.group.name}
+											{/if}
+										</div>
 										<span class="badge badge--{status.color}">{status.label}</span>
 									</div>
 									<div class="hw-card__title">{hw.title}</div>
@@ -547,11 +587,17 @@
 
 <!-- МОДАЛКА ПРОСМОТРА -->
 {#if showModal && selectedHw}
-	<div class="modal-overlay" onclick={closeModal} role="dialog" aria-modal="true">
+	<div class="modal-overlay" role="dialog" aria-modal="true">
 		<div class="modal" onclick={(e) => e.stopPropagation()}>
 			<div class="modal__header">
 				<div>
-					<div class="modal__subject">{selectedHw.group.name}</div>
+					<div class="modal__subject">
+						{#if selectedHw.subject}
+							{selectedHw.subject.name} · {selectedHw.group.name}
+						{:else}
+							{selectedHw.group.name}
+						{/if}
+					</div>
 					<h2 class="modal__title">{selectedHw.title}</h2>
 				</div>
 				<button class="modal__close" onclick={closeModal}>
@@ -916,8 +962,27 @@
 														{checkLoading ? '...' : 'Проверить'}
 													</button>
 												</div>
-											{:else if sub.comment}
-												<div class="submission-item__comment">💬 {sub.comment}</div>
+											{:else}
+												<!-- Задание проверено — показываем результат и кнопку перепроверки -->
+												<div class="checked-result">
+													<div class="checked-result__info">
+														<span class="checked-result__score">{sub.score} / {selectedHw!.max_score}</span>
+														{#if sub.comment}
+															<span class="checked-result__comment">💬 {sub.comment}</span>
+														{/if}
+													</div>
+													<button
+														class="btn btn--ghost btn--sm"
+														onclick={() => handleRecheck(sub.id)}
+														disabled={checkLoading}
+														title="Сбросить проверку и дать возможность студенту обновить ответ"
+													>
+														<svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor">
+															<path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/>
+														</svg>
+														Перепроверить
+													</button>
+												</div>
 											{/if}
 										</div>
 									{/if}
@@ -935,7 +1000,7 @@
 
 <!-- МОДАЛКА СОЗДАНИЯ/РЕДАКТИРОВАНИЯ -->
 {#if showForm}
-	<div class="modal-overlay" onclick={() => showForm = false} role="dialog">
+	<div class="modal-overlay" role="dialog">
 		<div class="modal modal--sm" onclick={(e) => e.stopPropagation()}>
 			<div class="modal__header">
 				<h2 class="modal__title">{editingHw ? 'Редактировать задание' : 'Новое задание'}</h2>
@@ -957,6 +1022,16 @@
 						</select>
 					</div>
 				{/if}
+
+				<div class="form-group">
+					<label class="form-label">Предмет *</label>
+					<select class="form-input" bind:value={formSubjectId}>
+						<option value={null}>Выберите предмет</option>
+						{#each mySubjects as s}
+							<option value={s.id}>{s.name}</option>
+						{/each}
+					</select>
+				</div>
 
 				<div class="form-group">
 					<label class="form-label">Название *</label>

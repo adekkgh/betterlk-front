@@ -298,7 +298,7 @@
 					<div class="block">
 						<div class="block__header">
 							<span class="block__title">Ближайшие задания</span>
-							<a href="/homework" class="block__link">Все →</a>
+							<a href="/homework" class="block__link">Все задания→</a>
 						</div>
 						{#if activeHw.length === 0}
 							<div class="empty-block">
@@ -312,11 +312,11 @@
 									<tbody>
 									{#each activeHw.slice(0, 5) as hw}
 										{@const dl = hw.deadline_extended && hw.extended_deadline ? hw.extended_deadline : hw.deadline}
-										<tr onclick={() => window.location.href='/homework'} style="cursor:pointer">
+										<tr onclick={() => window.location.href=`/homework?open=${hw.id}`} style="cursor:pointer">
 											<td class="table__main">{hw.title}</td>
 											<td class="table__muted">{hw.group?.name}</td>
 											<td><span class="badge badge--{deadlineColor(dl)}">{formatDeadline(dl)}</span></td>
-											<td>{#if hw.submission}<span class="badge badge--accent">Сдано</span>{:else}<span class="badge badge--neutral">Не начато</span>{/if}</td>
+											<td>{#if hw.submission}<span class="badge badge--accent">Ожидает проверки</span>{:else}<span class="badge badge--neutral">Не начато</span>{/if}</td>
 										</tr>
 									{/each}
 									</tbody>
@@ -408,7 +408,7 @@
 									<thead><tr><th>Задание</th><th>Группа</th><th>Ждут</th></tr></thead>
 									<tbody>
 									{#each homeworks.filter((hw: any) => (hw.submissions ?? []).some((s: any) => !s.is_checked)).slice(0, 6) as hw}
-										<tr onclick={() => window.location.href='/homework'} style="cursor:pointer">
+										<tr onclick={() => window.location.href=`/homework?open=${hw.id}`} style="cursor:pointer">
 											<td class="table__main">{hw.title}</td>
 											<td class="table__muted">{hw.group?.name}</td>
 											<td><span class="badge badge--danger">{(hw.submissions ?? []).filter((s: any) => !s.is_checked).length} чел.</span></td>
