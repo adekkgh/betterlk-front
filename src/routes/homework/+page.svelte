@@ -66,6 +66,7 @@
 	let lightboxName = $state<string>('');
 	let formSubjectId = $state<number | null>(null);
 	let mySubjects    = $state<{ id: number; name: string }[]>([]);
+	let checkEntryDate = $state(new Date().toISOString().split('T')[0]); // сегодня по умолчанию
 
 	const isStudent = $derived($userStore?.role?.name === 'student');
 	const canManage = $derived(['admin', 'moderator', 'professor'].includes($userStore?.role?.name ?? ''));
@@ -177,6 +178,8 @@
 		studentComment = hw.submission?.student_comment ?? '';
 		linkValues     = hw.submission?.links?.length ? [...hw.submission.links, ''] : [''];
 		showModal      = true;
+		checkEntryDate = new Date().toISOString().split('T')[0];
+		showModal = true;
 	}
 
 	function closeModal() {
@@ -236,10 +239,16 @@
 	async function handleCheck(submissionId: number) {
 		if (!selectedHw) return;
 		checkLoading = true;
+
 		const { error: err } = await api(`/submissions/${submissionId}/check`, {
 			method: 'POST',
-			body: { score: checkScore, comment: checkComment || null },
+			body: {
+				score: checkScore,
+				comment: checkComment || null,
+				entry_date: selectedHw.subject ? checkEntryDate : null,
+			},
 		});
+
 		checkLoading = false;
 		if (err) { submitError = err; return; }
 		await loadHomeworks();
@@ -958,12 +967,29 @@
 															<input class="form-input" type="text" placeholder="Необязательно" bind:value={checkComment} />
 														</div>
 													</div>
+
+													<!-- Дата записи в журнал — только если у задания есть предмет -->
+													{#if selectedHw!.subject}
+														<div class="form-group" style="margin-top:8px;">
+															<label class="form-label">
+																Дата в журнале
+																<span style="font-size:11px;color:var(--text3);font-weight:400;margin-left:4px;">
+                        					(балл запишется в ведомость на эту дату)
+                    						</span>
+															</label>
+															<input
+																class="form-input form-input--sm"
+																type="date"
+																bind:value={checkEntryDate}
+															/>
+														</div>
+													{/if}
+
 													<button class="btn btn--primary btn--sm" onclick={() => handleCheck(sub.id)} disabled={checkLoading}>
 														{checkLoading ? '...' : 'Проверить'}
 													</button>
 												</div>
 											{:else}
-												<!-- Задание проверено — показываем результат и кнопку перепроверки -->
 												<div class="checked-result">
 													<div class="checked-result__info">
 														<span class="checked-result__score">{sub.score} / {selectedHw!.max_score}</span>
