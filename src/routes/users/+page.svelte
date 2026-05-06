@@ -42,6 +42,12 @@
 	let groupError        = $state('');
 	let groupSuccess      = $state('');
 
+	let allSubjects        = $state<{ id: number; name: string }[]>([]);
+	let selectedSubjectIds = $state<number[]>([]);
+	let subjectLoading     = $state(false);
+	let subjectSuccess     = $state('');
+	let subjectError       = $state('');
+
 	// --- ФИЛЬТРАЦИЯ ---
 	const filtered = $derived(users.filter(u => {
 		const matchSearch = u.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -64,10 +70,11 @@
 		loading = true;
 		error   = '';
 
-		const [usersRes, rolesRes, groupsRes] = await Promise.all([
-			api<{ data: User[] }>('/users'),
-			api<{ data: Role[] }>('/roles'),
+		const [usersRes, rolesRes, groupsRes, subjectsRes] = await Promise.all([
+			api<{ data: any[] }>('/users'),
+			api<{ data: any[] }>('/roles'),
 			api<{ data: any[] }>('/groups'),
+			api<{ data: any[] }>('/subjects'),
 		]);
 
 		loading = false;
@@ -76,6 +83,7 @@
 		users  = usersRes.data?.data ?? [];
 		roles  = rolesRes.data?.data ?? [];
 		groups = groupsRes.data?.data ?? [];
+		allSubjects = subjectsRes.data?.data ?? [];
 	}
 
 	onMount(loadData);
@@ -100,7 +108,7 @@
 	}
 
 	// --- МОДАЛКА ---
-	function openModal(user: User) {
+	async function openModal(user: User) {
 		selectedUser     = user;
 		newRole          = user.role?.name ?? 'student';
 		selectedGroupId  = groups.find(g => g.name === user.group)?.id ?? null;
@@ -109,7 +117,16 @@
 		roleSuccess      = '';
 		groupError       = '';
 		groupSuccess     = '';
+		subjectError     = '';
+		subjectSuccess   = '';
+		selectedSubjectIds = [];
 		showModal        = true;
+
+		// Загружаем предметы препода
+		if (user.role?.name === 'professor') {
+			const { data } = await api<{ data: any[] }>(`/users/${user.id}/subjects`);
+			selectedSubjectIds = data?.data?.map((s: any) => s.id) ?? [];
+		}
 	}
 
 	function closeModal() {
@@ -166,6 +183,26 @@
 		groupSuccess = 'Группы успешно обновлены';
 		await loadData();
 		selectedUser = users.find(u => u.id === selectedUser!.id) ?? null;
+
+		setTimeout(() => {
+			closeModal();
+		}, 750);
+	}
+
+	async function handleSubjectsUpdate() {
+		if (!selectedUser) return;
+		subjectLoading = true;
+		subjectError   = '';
+		subjectSuccess = '';
+
+		const { error: err } = await api(`/users/${selectedUser.id}/subjects`, {
+			method: 'PUT',
+			body: { subject_ids: selectedSubjectIds },
+		});
+
+		subjectLoading = false;
+		if (err) { subjectError = err; return; }
+		subjectSuccess = 'Предметы успешно обновлены';
 
 		setTimeout(() => {
 			closeModal();
@@ -625,6 +662,62 @@
 								Сохранить группы
 							</button>
 						{/if}
+					</div>
+				{/if}
+
+				<!-- Предметы — только для преподавателей -->
+				{#if selectedUser.role?.name === 'professor'}
+					<div class="modal__divider"></div>
+
+					<div class="group-section">
+						<div class="group-section__title">Предметы преподавателя</div>
+
+						{#if subjectSuccess}
+							<div class="alert alert--success">
+								<svg width="15" height="15" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+								{subjectSuccess}
+							</div>
+						{/if}
+
+						{#if subjectError}
+							<div class="alert alert--error">
+								<svg width="15" height="15" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
+								{subjectError}
+							</div>
+						{/if}
+
+						<div class="groups-checklist">
+							{#each allSubjects as subject}
+								<label class="group-check" class:group-check--active={selectedSubjectIds.includes(subject.id)}>
+									<input
+										type="checkbox"
+										checked={selectedSubjectIds.includes(subject.id)}
+										onchange={(e) => {
+                            const checked = (e.target as HTMLInputElement).checked;
+                            selectedSubjectIds = checked
+                                ? [...selectedSubjectIds, subject.id]
+                                : selectedSubjectIds.filter(id => id !== subject.id);
+                        }}
+									/>
+									<div class="group-check__box">
+										{#if selectedSubjectIds.includes(subject.id)}
+											<svg width="10" height="10" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+										{/if}
+									</div>
+									<span class="group-check__name">{subject.name}</span>
+								</label>
+							{/each}
+						</div>
+
+						<button
+							class="btn btn--primary"
+							style="width:100%;justify-content:center;margin-top:12px;"
+							onclick={handleSubjectsUpdate}
+							disabled={subjectLoading}
+						>
+							{#if subjectLoading}<span class="spinner"></span>{/if}
+							Сохранить предметы
+						</button>
 					</div>
 				{/if}
 
