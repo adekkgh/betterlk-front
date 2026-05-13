@@ -81,7 +81,24 @@
 
 		if (usersRes.error) { error = usersRes.error; return; }
 		users  = usersRes.data?.data ?? [];
-		roles  = rolesRes.data?.data ?? [];
+		//roles  = rolesRes.data?.data ?? []; // TODO: return to this and add a logic with making someone admin through the confirmation email
+		roles  = [
+			{
+				id: 2,
+				name: "moderator",
+				display_name: "Модератор",
+			},
+			{
+				id: 3,
+				name: "professor",
+				display_name: "Преподаватель",
+			},
+			{
+				id: 4,
+				name: "student",
+				display_name: "Студент",
+			}
+		];
 		groups = groupsRes.data?.data ?? [];
 		allSubjects = subjectsRes.data?.data ?? [];
 	}
@@ -237,7 +254,7 @@
 					<svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor"><path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z"/></svg>
 					Главная
 				</a>
-				<a href="/news" class="nav-item nav-item--active">
+				<a href="/news" class="nav-item">
 					<svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M2 5a2 2 0 012-2h8a2 2 0 012 2v10a2 2 0 002 2H4a2 2 0 01-2-2V5zm3 1h6v4H5V6zm6 6H5v2h6v-2z" clip-rule="evenodd"/><path d="M15 7h1a2 2 0 012 2v5.5a1.5 1.5 0 01-3 0V7z"/></svg>
 					Новости
 				</a>
@@ -269,7 +286,7 @@
 						Предметы
 					</a>
 					<a href="/specializations" class="nav-item">
-						<svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor"><path d="M9 4.804A7.968 7.968 0 005.5 4c-1.255 0-2.443.29-3.5.804v10A7.969 7.969 0 015.5 14c1.669 0 3.218.51 4.5 1.385A7.962 7.962 0 0114.5 14c1.255 0 2.443.29 3.5.804v-10A7.968 7.968 0 0014.5 4c-1.255 0-2.443.29-3.5.804V12a1 1 0 11-2 0V4.804z"/></svg>
+						<svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 6V5a3 3 0 013-3h2a3 3 0 013 3v1h2a2 2 0 012 2v3.57A22.952 22.952 0 0110 13a22.95 22.95 0 01-8-1.43V8a2 2 0 012-2h2zm2-1a1 1 0 011-1h2a1 1 0 011 1v1H8V5zm1 5a1 1 0 011-1h.01a1 1 0 110 2H10a1 1 0 01-1-1z" clip-rule="evenodd"/><path d="M2 13.692V16a2 2 0 002 2h12a2 2 0 002-2v-2.308A24.974 24.974 0 0110 15c-2.796 0-5.487-.46-8-1.308z"/></svg>
 						Специальности
 					</a>
 				</div>
@@ -280,6 +297,10 @@
 					<a href="/groups" class="nav-item">
 						<svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v1h8v-1zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-1a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v1h-3zM4.75 14.094A5.973 5.973 0 004 17v1H1v-1a3 3 0 013.75-2.906z"/></svg>
 						Группы
+					</a>
+					<a href="/subjects" class="nav-item">
+						<svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor"><path d="M9 4.804A7.968 7.968 0 005.5 4c-1.255 0-2.443.29-3.5.804v10A7.969 7.969 0 015.5 14c1.669 0 3.218.51 4.5 1.385A7.962 7.962 0 0114.5 14c1.255 0 2.443.29 3.5.804v-10A7.968 7.968 0 0014.5 4c-1.255 0-2.443.29-3.5.804V12a1 1 0 11-2 0V4.804z"/></svg>
+						Предметы
 					</a>
 				</div>
 			{/if}
@@ -569,7 +590,7 @@
 								<div class="role-option__desc">
 									{#if role.name === 'admin'}Полный доступ ко всему
 									{:else if role.name === 'moderator'}Управление данными
-									{:else if role.name === 'professor'}Создание заданий и журналов
+									{:else if role.name === 'professor'}Создание заданий и ведомостей
 									{:else}Просмотр и сдача заданий
 									{/if}
 								</div>

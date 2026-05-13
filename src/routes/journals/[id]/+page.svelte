@@ -23,23 +23,22 @@
 
 	const journalId = $derived(Number($page.params.id));
 
-	let journal     = $state<JournalData | null>(null);
-	let loading     = $state(true);
-	let error       = $state('');
-	let tableRef    = $state<HTMLDivElement | null>(null);
+	let journal      = $state<JournalData | null>(null);
+	let loading      = $state(true);
+	let error        = $state('');
+	let tableRef     = $state<HTMLDivElement | null>(null);
 
-	// Локальные изменения — накапливаем до сохранения
-	// Ключ: `${studentId}:${date}`
 	let localChanges = $state<Map<string, Entry>>(new Map());
 	let hasChanges   = $state(false);
 	let saving       = $state(false);
 	let saveError    = $state('');
 	let saveSuccess  = $state('');
 
-	// Активная ячейка для навигации
-	let activeCell = $state<{ rowIdx: number; colIdx: number } | null>(null);
+	let activeCell   = $state<{ rowIdx: number; colIdx: number } | null>(null);
 
-	// Редактирование рейтинга
+	// Мобильный режим — выбранный студент для детального просмотра
+	let mobileSelectedStudent = $state<Student | null>(null);
+
 	let editingRating   = $state<number | null>(null);
 	let editRatingScore = $state<string>('');
 	let editExamScore   = $state<string>('');
@@ -47,16 +46,14 @@
 	let ratingError     = $state('');
 
 	const canEdit   = $derived(['admin', 'moderator', 'professor'].includes($userStore?.role?.name ?? ''));
-	const isStudent = $derived($userStore?.role?.name === 'student');
 
-	// Все даты семестра
 	const allDates = $derived((() => {
 		if (!journal) return [];
 		const dates: string[] = [];
 		const sem  = journal.semester;
 		const year = journal.year;
-		const startDate = sem === 1 ? new Date(year, 8, 1)      : new Date(year, 1, 1);
-		const endDate   = sem === 1 ? new Date(year + 1, 1, 0)  : new Date(year, 6, 0);
+		const startDate = sem === 1 ? new Date(year, 8, 1)     : new Date(year, 1, 1);
+		const endDate   = sem === 1 ? new Date(year + 1, 1, 0) : new Date(year, 6, 0);
 		const cur = new Date(startDate);
 		while (cur <= endDate) {
 			if (cur.getDay() !== 0 && cur.getDay() !== 6) {
@@ -106,11 +103,16 @@
 		return { day: String(d.getDate()), dow: dows[d.getDay()], isToday: dateStr === today };
 	}
 
+	function fmtDateShort(dateStr: string): string {
+		const d = new Date(dateStr + 'T00:00:00');
+		const mons = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
+		return `${d.getDate()} ${mons[d.getMonth()]}`;
+	}
+
 	function semLabel(sem: 1 | 2) {
 		return sem === 1 ? '1 семестр (сен–янв)' : '2 семестр (фев–июн)';
 	}
 
-	// Получить актуальное значение ячейки (с учётом локальных изменений)
 	function getCell(studentId: number, date: string): Entry {
 		const key = `${studentId}:${date}`;
 		if (localChanges.has(key)) return localChanges.get(key)!;
@@ -118,9 +120,8 @@
 	}
 
 	function getStats(studentId: number) {
-		const dates = allDates;
 		let totalScore = 0; let absentDays = 0;
-		for (const date of dates) {
+		for (const date of allDates) {
 			const e = getCell(studentId, date);
 			if (e.score !== null) totalScore += e.score;
 			if (e.is_absent) absentDays++;
@@ -130,6 +131,14 @@
 		const rScore      = Math.min(rating?.rating_score ?? 0, 30);
 		const eScore      = Math.min(rating?.exam_score   ?? 0, 30);
 		return { totalScore, cappedScore, absentDays, absentHours: absentDays * 2, grandTotal: cappedScore + rScore + eScore };
+	}
+
+	// Даты с данными для конкретного студента (для мобильного вида)
+	function getStudentFilledDates(studentId: number): string[] {
+		return allDates.filter(d => {
+			const e = getCell(studentId, d);
+			return e.is_absent || e.score !== null;
+		});
 	}
 
 	async function loadJournal() {
@@ -144,11 +153,9 @@
 
 	onMount(loadJournal);
 
-	// Установить значение ячейки
 	function setCell(studentId: number, date: string, entry: Entry) {
-		const key = `${studentId}:${date}`;
+		const key  = `${studentId}:${date}`;
 		const orig = journal?.entries[studentId]?.[date] ?? { is_absent: false, score: null };
-		// Если совпадает с оригиналом — убираем из изменений
 		if (entry.is_absent === orig.is_absent && entry.score === orig.score) {
 			localChanges.delete(key);
 		} else {
@@ -159,31 +166,22 @@
 		saveSuccess  = '';
 	}
 
-	// Сохранить все изменения
 	async function saveChanges() {
 		if (!journal || localChanges.size === 0) return;
-		saving    = true;
-		saveError = '';
+		saving = true; saveError = '';
 
 		const entries = Array.from(localChanges.entries()).map(([key, entry]) => {
 			const [studentId, date] = key.split(':');
-			return {
-				student_id: Number(studentId),
-				date,
-				is_absent:  entry.is_absent,
-				score:      entry.score,
-			};
+			return { student_id: Number(studentId), date, is_absent: entry.is_absent, score: entry.score };
 		});
 
 		const { error: err } = await api(`/journals/${journal.id}/entries/batch`, {
-			method: 'POST',
-			body: { entries },
+			method: 'POST', body: { entries },
 		});
 
 		saving = false;
 		if (err) { saveError = err; return; }
 
-		// Применяем изменения в журнал
 		for (const [key, entry] of localChanges.entries()) {
 			const [studentId, date] = key.split(':');
 			const sid = Number(studentId);
@@ -194,20 +192,15 @@
 				journal.entries[sid][date] = entry;
 			}
 		}
-		journal      = { ...journal };
+		journal = { ...journal };
 		localChanges = new Map();
 		hasChanges   = false;
 		saveSuccess  = 'Изменения сохранены';
 		setTimeout(() => saveSuccess = '', 3000);
 	}
 
-	function discardChanges() {
-		localChanges = new Map();
-		hasChanges   = false;
-		saveError    = '';
-	}
+	function discardChanges() { localChanges = new Map(); hasChanges = false; saveError = ''; }
 
-	// Навигация стрелками
 	function scrollToMonth(month: number, year: number) {
 		if (!tableRef) return;
 		const firstDate = allDates.find(d => d.startsWith(`${year}-${String(month).padStart(2, '0')}`));
@@ -221,7 +214,6 @@
 		if (rowIdx < 0 || rowIdx >= journal.students.length) return;
 		if (colIdx < 0 || colIdx >= allDates.length) return;
 		activeCell = { rowIdx, colIdx };
-		// Скролл к ячейке
 		const cellEl = tableRef?.querySelector(`[data-row="${rowIdx}"][data-col="${colIdx}"]`) as HTMLElement;
 		cellEl?.focus();
 	}
@@ -233,22 +225,10 @@
 		const current = getCell(student.id, date);
 
 		switch (e.key) {
-			case 'ArrowRight':
-				e.preventDefault();
-				activateCell(rowIdx, colIdx + 1);
-				break;
-			case 'ArrowLeft':
-				e.preventDefault();
-				activateCell(rowIdx, colIdx - 1);
-				break;
-			case 'ArrowDown':
-				e.preventDefault();
-				activateCell(rowIdx + 1, colIdx);
-				break;
-			case 'ArrowUp':
-				e.preventDefault();
-				activateCell(rowIdx - 1, colIdx);
-				break;
+			case 'ArrowRight':  e.preventDefault(); activateCell(rowIdx, colIdx + 1); break;
+			case 'ArrowLeft':   e.preventDefault(); activateCell(rowIdx, colIdx - 1); break;
+			case 'ArrowDown':   e.preventDefault(); activateCell(rowIdx + 1, colIdx); break;
+			case 'ArrowUp':     e.preventDefault(); activateCell(rowIdx - 1, colIdx); break;
 			case 'Tab':
 				e.preventDefault();
 				if (e.shiftKey) {
@@ -269,7 +249,6 @@
 				setCell(student.id, date, { is_absent: false, score: null });
 				break;
 			default:
-				// Цифры 0-9
 				if (e.key >= '0' && e.key <= '9') {
 					e.preventDefault();
 					const newScore = current.score === null
@@ -277,7 +256,6 @@
 						: Math.min(Number(String(current.score) + e.key), 100);
 					setCell(student.id, date, { ...current, score: newScore });
 				}
-				// Буква Н (русская) или n (латинская) — переключить пропуск
 				if (e.key === 'н' || e.key === 'Н' || e.key === 'n' || e.key === 'N') {
 					e.preventDefault();
 					setCell(student.id, date, { ...current, is_absent: !current.is_absent });
@@ -286,7 +264,6 @@
 		}
 	}
 
-	// Рейтинг
 	function openRatingModal(studentId: number) {
 		if (!canEdit) return;
 		const r = journal?.ratings[studentId];
@@ -321,7 +298,11 @@
 	);
 
 	function onGlobalKeydown(e: KeyboardEvent) {
-		if (e.key === 'Escape') { editingRating = null; activeCell = null; }
+		if (e.key === 'Escape') {
+			editingRating = null;
+			activeCell    = null;
+			mobileSelectedStudent = null;
+		}
 		if (e.key === 'Enter' && editingRating !== null) saveRating();
 	}
 </script>
@@ -353,7 +334,7 @@
 					Новости
 				</a>
 				<a href="/homework" class="nav-item">
-					<svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor"><path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"/><path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clip-rule="evenodd"/></svg>
+					<svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor"><path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"/><path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5z" clip-rule="evenodd"/></svg>
 					Задания
 					{#if $homeworksCountStore > 0}<span class="nav-badge">{$homeworksCountStore}</span>{/if}
 				</a>
@@ -365,56 +346,31 @@
 			{#if $userStore?.role?.name === 'admin' || $userStore?.role?.name === 'moderator'}
 				<div class="nav-section">
 					<div class="nav-section__label">Управление</div>
-					<a href="/users" class="nav-item">
-						<svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor"><path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z"/></svg>
-						Пользователи
-					</a>
-					<a href="/groups" class="nav-item">
-						<svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v1h8v-1zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-1a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v1h-3zM4.75 14.094A5.973 5.973 0 004 17v1H1v-1a3 3 0 013.75-2.906z"/></svg>
-						Группы
-					</a>
-					<a href="/subjects" class="nav-item">
-						<svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor"><path d="M9 4.804A7.968 7.968 0 005.5 4c-1.255 0-2.443.29-3.5.804v10A7.969 7.969 0 015.5 14c1.669 0 3.218.51 4.5 1.385A7.962 7.962 0 0114.5 14c1.255 0 2.443.29 3.5.804v-10A7.968 7.968 0 0014.5 4c-1.255 0-2.443.29-3.5.804V12a1 1 0 11-2 0V4.804z"/></svg>
-						Предметы
-					</a>
-					<a href="/specializations" class="nav-item">
-						<svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 6V5a3 3 0 013-3h2a3 3 0 013 3v1h2a2 2 0 012 2v3.57A22.952 22.952 0 0110 13a22.95 22.95 0 01-8-1.43V8a2 2 0 012-2h2zm2-1a1 1 0 011-1h2a1 1 0 011 1v1H8V5zm1 5a1 1 0 011-1h.01a1 1 0 110 2H10a1 1 0 01-1-1z" clip-rule="evenodd"/><path d="M2 13.692V16a2 2 0 002 2h12a2 2 0 002-2v-2.308A24.974 24.974 0 0110 15c-2.796 0-5.487-.46-8-1.308z"/></svg>
-						Специальности
-					</a>
+					<a href="/users" class="nav-item"><svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor"><path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z"/></svg>Пользователи</a>
+					<a href="/groups" class="nav-item"><svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v1h8v-1zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-1a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v1h-3zM4.75 14.094A5.973 5.973 0 004 17v1H1v-1a3 3 0 013.75-2.906z"/></svg>Группы</a>
+					<a href="/subjects" class="nav-item"><svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor"><path d="M9 4.804A7.968 7.968 0 005.5 4c-1.255 0-2.443.29-3.5.804v10A7.969 7.969 0 015.5 14c1.669 0 3.218.51 4.5 1.385A7.962 7.962 0 0114.5 14c1.255 0 2.443.29 3.5.804v-10A7.968 7.968 0 0014.5 4c-1.255 0-2.443.29-3.5.804V12a1 1 0 11-2 0V4.804z"/></svg>Предметы</a>
+					<a href="/specializations" class="nav-item"><svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 6V5a3 3 0 013-3h2a3 3 0 013 3v1h2a2 2 0 012 2v3.57A22.952 22.952 0 0110 13a22.95 22.95 0 01-8-1.43V8a2 2 0 012-2h2zm2-1a1 1 0 011-1h2a1 1 0 011 1v1H8V5zm1 5a1 1 0 011-1h.01a1 1 0 110 2H10a1 1 0 01-1-1z" clip-rule="evenodd"/><path d="M2 13.692V16a2 2 0 002 2h12a2 2 0 002-2v-2.308A24.974 24.974 0 0110 15c-2.796 0-5.487-.46-8-1.308z"/></svg>Специальности</a>
 				</div>
 			{/if}
 			{#if $userStore?.role?.name === 'professor'}
 				<div class="nav-section">
 					<div class="nav-section__label">Управление</div>
-					<a href="/groups" class="nav-item">
-						<svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v1h8v-1zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-1a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v1h-3zM4.75 14.094A5.973 5.973 0 004 17v1H1v-1a3 3 0 013.75-2.906z"/></svg>
-						Группы
-					</a>
+					<a href="/groups" class="nav-item"><svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v1h8v-1zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-1a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v1h-3zM4.75 14.094A5.973 5.973 0 004 17v1H1v-1a3 3 0 013.75-2.906z"/></svg>Группы</a>
+					<a href="/subjects" class="nav-item"><svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor"><path d="M9 4.804A7.968 7.968 0 005.5 4c-1.255 0-2.443.29-3.5.804v10A7.969 7.969 0 015.5 14c1.669 0 3.218.51 4.5 1.385A7.962 7.962 0 0114.5 14c1.255 0 2.443.29 3.5.804v-10A7.968 7.968 0 0014.5 4c-1.255 0-2.443.29-3.5.804V12a1 1 0 11-2 0V4.804z"/></svg>Предметы</a>
 				</div>
 			{/if}
 		</nav>
 		<div class="sidebar__footer">
 			<button class="theme-toggle" onclick={() => theme.toggle()}>
-				{#if $theme === 'light'}
-					<svg width="15" height="15" viewBox="0 0 20 20" fill="currentColor"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"/></svg>
-					Тёмная тема
-				{:else}
-					<svg width="15" height="15" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clip-rule="evenodd"/></svg>
-					Светлая тема
-				{/if}
+				{#if $theme === 'light'}<svg width="15" height="15" viewBox="0 0 20 20" fill="currentColor"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"/></svg>Тёмная тема
+				{:else}<svg width="15" height="15" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clip-rule="evenodd"/></svg>Светлая тема{/if}
 			</button>
 			<form method="POST" action="/auth/logout">
-				<button type="submit" class="logout-btn">
-					<svg width="15" height="15" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 102 0V4a1 1 0 00-1-1zm10.293 9.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L14.586 9H7a1 1 0 100 2h7.586l-1.293 1.293z" clip-rule="evenodd"/></svg>
-					Выйти
-				</button>
+				<button type="submit" class="logout-btn"><svg width="15" height="15" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 102 0V4a1 1 0 00-1-1zm10.293 9.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L14.586 9H7a1 1 0 100 2h7.586l-1.293 1.293z" clip-rule="evenodd"/></svg>Выйти</button>
 			</form>
 			<a href="/profile" class="user-card">
 				<div class="user-avatar">{$userStore?.name?.split(' ').map((w: string) => w[0]).join('').slice(0,2).toUpperCase() ?? '?'}</div>
-				<div class="user-info">
-					<div class="user-name">{$userStore?.name ?? ''}</div>
-					<div class="user-role">{$userStore?.role?.display_name ?? ''}</div>
-				</div>
+				<div class="user-info"><div class="user-name">{$userStore?.name ?? ''}</div><div class="user-role">{$userStore?.role?.display_name ?? ''}</div></div>
 			</a>
 		</div>
 	</aside>
@@ -438,170 +394,326 @@
 
 		<div class="content">
 			{#if loading}
-				<div class="state-wrap">
-					<div class="spinner-lg"></div>
-					<p>Загружаем ведомость...</p>
-				</div>
+				<div class="state-wrap"><div class="spinner-lg"></div><p>Загружаем ведомость...</p></div>
 			{:else if error}
 				<div class="state-wrap">
-					<div class="state-icon state-icon--error">
-						<svg width="24" height="24" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
-					</div>
-					<p>{error}</p>
+					<p style="color:var(--danger)">{error}</p>
 					<button class="btn btn--ghost" onclick={loadJournal}>Попробовать снова</button>
 				</div>
 			{:else if journal}
-				<!-- Навигация по месяцам -->
-				<div class="month-nav">
-					<span class="month-nav__label">Перейти к:</span>
-					{#each semesterMonths as m}
-						<button class="month-btn" onclick={() => scrollToMonth(m.month, m.year)}>{m.label}</button>
-					{/each}
-				</div>
 
-				{#if canEdit}
-					<div class="hint">
-						<svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/></svg>
-						Кликните на ячейку чтобы начать ввод · Стрелки — навигация · Цифры — балл · <strong>Н</strong> — пропуск · <strong>Delete</strong> — очистить
-					</div>
-				{/if}
-
-				<!-- ТАБЛИЦА -->
-				<div class="table-wrap" bind:this={tableRef}>
-					<table class="journal-table">
-						<thead>
-						<tr class="tr-months">
-							<th class="th-name-spacer" rowspan="2"></th>
-							{#each getMonthSpan(allDates) as span}
-								<th class="th-month" colspan={span.count}>{span.label}</th>
-							{/each}
-							<th class="th-special-header" colspan="2">Итоговые</th>
-							<th class="th-stat-header" colspan="3">Статистика</th>
-						</tr>
-						<tr class="tr-dates">
-							{#each allDates as date}
-								{@const fd = fmtDate(date)}
-								<th class="th-date" class:th-date--today={fd.isToday}>
-									<div class="th-date__dow">{fd.dow}</div>
-									<div class="th-date__day">{fd.day}</div>
-								</th>
-							{/each}
-							<th class="th-special">РР<div class="th-sub">макс 30</div></th>
-							<th class="th-special">Экз<div class="th-sub">макс 30</div></th>
-							<th class="th-stat">Баллы<div class="th-sub">из 100</div></th>
-							<th class="th-stat">Пр.<div class="th-sub">дни</div></th>
-							<th class="th-stat">Пр.<div class="th-sub">часы</div></th>
-						</tr>
-						</thead>
-						<tbody>
-						{#each journal.students as student, rowIdx}
-							{@const stats = getStats(student.id)}
-							{@const rating = journal.ratings[student.id]}
-							<tr>
-								<td class="td-name">
-									<div class="student-cell">
-										<div class="student-avatar">{student.name.split(' ').map((w: string) => w[0]).join('').slice(0,2).toUpperCase()}</div>
-										<span class="student-name">{student.name}</span>
-									</div>
-								</td>
-
-								{#each allDates as date, colIdx}
-									{@const cell = getCell(student.id, date)}
-									{@const isActive = activeCell?.rowIdx === rowIdx && activeCell?.colIdx === colIdx}
-									{@const isChanged = localChanges.has(`${student.id}:${date}`)}
-									{@const fd = fmtDate(date)}
-									<td
-										class="td-cell"
-										class:td-cell--absent={cell.is_absent && cell.score == null}
-										class:td-cell--score={cell.score != null && !cell.is_absent}
-										class:td-cell--both={cell.is_absent && cell.score != null}
-										class:td-cell--active={isActive}
-										class:td-cell--changed={isChanged && !isActive}
-										class:td-cell--editable={canEdit}
-										class:td-cell--today={fd.isToday}
-										data-row={rowIdx}
-										data-col={colIdx}
-										tabindex={canEdit ? 0 : -1}
-										onclick={() => activateCell(rowIdx, colIdx)}
-										onkeydown={(e) => handleCellKeydown(e, rowIdx, colIdx)}
-									>
-										<div class="cell-content">
-											{#if cell.is_absent}
-												<span class="cell-tag cell-tag--absent">Н</span>
-											{/if}
-											{#if cell.score != null}
-												<span class="cell-tag cell-tag--score">{cell.score}</span>
-											{/if}
-										</div>
-									</td>
-								{/each}
-
-								<td class="td-special td-special--editable" onclick={() => openRatingModal(student.id)}>
-									<span class:has-value={rating?.rating_score != null}>{rating?.rating_score ?? '—'}</span>
-								</td>
-								<td class="td-special td-special--editable" onclick={() => openRatingModal(student.id)}>
-									<span class:has-value={rating?.exam_score != null}>{rating?.exam_score ?? '—'}</span>
-								</td>
-								<td class="td-stat">
-									<div class="stat-total"
-											 class:stat-total--good={stats.grandTotal >= 60}
-											 class:stat-total--warn={stats.grandTotal >= 40 && stats.grandTotal < 60}
-											 class:stat-total--bad={stats.grandTotal > 0 && stats.grandTotal < 40}>
-										{stats.grandTotal}
-										{#if stats.totalScore > 40}<span class="stat-cap" title="Ограничено 40">*</span>{/if}
-									</div>
-								</td>
-								<td class="td-stat"><span class:stat-warn={stats.absentDays > 0}>{stats.absentDays}</span></td>
-								<td class="td-stat"><span class:stat-warn={stats.absentHours > 0}>{stats.absentHours}</span></td>
-							</tr>
+				<!-- ══════════════════════════════════════════════ -->
+				<!-- ДЕСКТОП: полная таблица (скрыта на мобилке)   -->
+				<!-- ══════════════════════════════════════════════ -->
+				<div class="desktop-view">
+					<div class="month-nav">
+						<span class="month-nav__label">Перейти к:</span>
+						{#each semesterMonths as m}
+							<button class="month-btn" onclick={() => scrollToMonth(m.month, m.year)}>{m.label}</button>
 						{/each}
-						</tbody>
-					</table>
-				</div>
+					</div>
 
-				<!-- ПАНЕЛЬ СОХРАНЕНИЯ -->
-				{#if canEdit}
-					<div class="save-bar" class:save-bar--visible={hasChanges || saveSuccess || saveError}>
-						{#if saveError}
-							<span class="save-bar__error">{saveError}</span>
-						{:else if saveSuccess}
-							<span class="save-bar__success">
-								<svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
-								{saveSuccess}
-							</span>
-						{:else}
-							<span class="save-bar__count">
-								Несохранённых изменений: <strong>{localChanges.size}</strong>
-							</span>
-						{/if}
-						<div class="save-bar__actions">
-							{#if hasChanges}
-								<button class="btn btn--ghost btn--sm" onclick={discardChanges}>Отменить</button>
-								<button class="btn btn--primary btn--sm" onclick={saveChanges} disabled={saving}>
-									{#if saving}<span class="spinner"></span>{/if}
-									Сохранить изменения
-								</button>
-							{/if}
+					{#if canEdit}
+						<div class="hint">
+							<svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/></svg>
+							Кликните на ячейку · Стрелки — навигация · Цифры — балл · <strong>Н</strong> — пропуск · <strong>Delete</strong> — очистить
+						</div>
+					{/if}
+
+					<!-- Обёртка: позиционируем относительно неё правые фиксированные колонки -->
+					<div class="table-outer">
+						<!-- Скроллируемая часть (только даты) -->
+						<div class="table-scroll" bind:this={tableRef}>
+							<table class="journal-table">
+								<thead>
+								<tr class="tr-months">
+									<th class="th-name-spacer" rowspan="2"></th>
+									{#each getMonthSpan(allDates) as span}
+										<th class="th-month" colspan={span.count}>{span.label}</th>
+									{/each}
+								</tr>
+								<tr class="tr-dates">
+									{#each allDates as date}
+										{@const fd = fmtDate(date)}
+										<th class="th-date" class:th-date--today={fd.isToday}>
+											<div class="th-date__dow">{fd.dow}</div>
+											<div class="th-date__day">{fd.day}</div>
+										</th>
+									{/each}
+								</tr>
+								</thead>
+								<tbody>
+								{#each journal.students as student, rowIdx}
+									<tr>
+										<td class="td-name">
+											<div class="student-cell">
+												<div class="student-avatar">{student.name.split(' ').map((w: string) => w[0]).join('').slice(0,2).toUpperCase()}</div>
+												<span class="student-name">{student.name}</span>
+											</div>
+										</td>
+										{#each allDates as date, colIdx}
+											{@const cell    = getCell(student.id, date)}
+											{@const isAct   = activeCell?.rowIdx === rowIdx && activeCell?.colIdx === colIdx}
+											{@const isChng  = localChanges.has(`${student.id}:${date}`)}
+											{@const fd      = fmtDate(date)}
+											<td
+												class="td-cell"
+												class:td-cell--absent={cell.is_absent && cell.score == null}
+												class:td-cell--score={cell.score != null && !cell.is_absent}
+												class:td-cell--both={cell.is_absent && cell.score != null}
+												class:td-cell--active={isAct}
+												class:td-cell--changed={isChng && !isAct}
+												class:td-cell--editable={canEdit}
+												class:td-cell--today={fd.isToday}
+												data-row={rowIdx}
+												data-col={colIdx}
+												tabindex={canEdit ? 0 : -1}
+												onclick={() => activateCell(rowIdx, colIdx)}
+												onkeydown={(e) => handleCellKeydown(e, rowIdx, colIdx)}
+											>
+												<div class="cell-content">
+													{#if cell.is_absent}<span class="cell-tag cell-tag--absent">Н</span>{/if}
+													{#if cell.score != null}<span class="cell-tag cell-tag--score">{cell.score}</span>{/if}
+												</div>
+											</td>
+										{/each}
+									</tr>
+								{/each}
+								</tbody>
+							</table>
+						</div>
+
+						<!-- Фиксированная правая таблица (итоги + статистика) -->
+						<div class="table-fixed-right">
+							<table class="journal-table journal-table--right">
+								<thead>
+								<tr class="tr-months">
+									<th class="th-special-header" colspan="2">Итоговые</th>
+									<th class="th-stat-header"    colspan="3">Статистика</th>
+								</tr>
+								<tr class="tr-dates">
+									<th class="th-special">РР<div class="th-sub">макс 30</div></th>
+									<th class="th-special">Экз<div class="th-sub">макс 30</div></th>
+									<th class="th-stat">Баллы<div class="th-sub">из 100</div></th>
+									<th class="th-stat">Пр.<div class="th-sub">дни</div></th>
+									<th class="th-stat">Пр.<div class="th-sub">часы</div></th>
+								</tr>
+								</thead>
+								<tbody>
+								{#each journal.students as student}
+									{@const stats  = getStats(student.id)}
+									{@const rating = journal.ratings[student.id]}
+									<tr>
+										<td class="td-special td-special--editable" onclick={() => openRatingModal(student.id)}>
+											<span class:has-value={rating?.rating_score != null}>{rating?.rating_score ?? '—'}</span>
+										</td>
+										<td class="td-special td-special--editable" onclick={() => openRatingModal(student.id)}>
+											<span class:has-value={rating?.exam_score != null}>{rating?.exam_score ?? '—'}</span>
+										</td>
+										<td class="td-stat">
+											<div class="stat-total"
+													 class:stat-total--good={stats.grandTotal >= 60}
+													 class:stat-total--warn={stats.grandTotal >= 40 && stats.grandTotal < 60}
+													 class:stat-total--bad={stats.grandTotal > 0 && stats.grandTotal < 40}>
+												{stats.grandTotal}{#if stats.totalScore > 40}<span class="stat-cap" title="Ограничено 40">*</span>{/if}
+											</div>
+										</td>
+										<td class="td-stat"><span class:stat-warn={stats.absentDays > 0}>{stats.absentDays}</span></td>
+										<td class="td-stat"><span class:stat-warn={stats.absentHours > 0}>{stats.absentHours}</span></td>
+									</tr>
+								{/each}
+								</tbody>
+							</table>
 						</div>
 					</div>
-				{/if}
 
-				<!-- Легенда -->
-				<div class="legend">
-					<div class="legend__item"><span class="cell-tag cell-tag--absent">Н</span> Пропуск</div>
-					<div class="legend__item"><span class="cell-tag cell-tag--score">8</span> Балл</div>
-					<div class="legend__item">
-						<span style="display:flex;gap:2px;">
-							<span class="cell-tag cell-tag--absent">Н</span>
-							<span class="cell-tag cell-tag--score">5</span>
-						</span>
-						Пропуск + балл
+					<!-- Панель сохранения -->
+					{#if canEdit}
+						<div class="save-bar" class:save-bar--visible={hasChanges || saveSuccess || saveError}>
+							{#if saveError}
+								<span class="save-bar__error">{saveError}</span>
+							{:else if saveSuccess}
+								<span class="save-bar__success">
+									<svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+									{saveSuccess}
+								</span>
+							{:else}
+								<span class="save-bar__count">Несохранённых изменений: <strong>{localChanges.size}</strong></span>
+							{/if}
+							<div class="save-bar__actions">
+								{#if hasChanges}
+									<button class="btn btn--ghost btn--sm" onclick={discardChanges}>Отменить</button>
+									<button class="btn btn--primary btn--sm" onclick={saveChanges} disabled={saving}>
+										{#if saving}<span class="spinner"></span>{/if}
+										Сохранить изменения
+									</button>
+								{/if}
+							</div>
+						</div>
+					{/if}
+
+					<div class="legend">
+						<div class="legend__item"><span class="cell-tag cell-tag--absent">Н</span> Пропуск</div>
+						<div class="legend__item"><span class="cell-tag cell-tag--score">8</span> Балл</div>
+						<div class="legend__item"><span style="display:flex;gap:2px;"><span class="cell-tag cell-tag--absent">Н</span><span class="cell-tag cell-tag--score">5</span></span> Пропуск + балл</div>
+						<div class="legend__item"><span class="legend__changed"></span> Изменено, не сохранено</div>
 					</div>
-					<div class="legend__item"><span class="legend__changed"></span> Изменено, не сохранено</div>
-					{#if journal.students.some(s => getStats(s.id).totalScore > 40)}
-						<div class="legend__item"><span class="stat-cap">*</span> Баллы ограничены 40 при подсчёте</div>
+				</div>
+
+				<!-- ══════════════════════════════════════════════ -->
+				<!-- МОБИЛКА: список студентов → детали            -->
+				<!-- ══════════════════════════════════════════════ -->
+				<div class="mobile-view">
+					{#if !mobileSelectedStudent}
+						<!-- Список студентов -->
+						<div class="m-student-list">
+							<p class="m-student-list__hint">Нажмите на студента чтобы посмотреть детали</p>
+							{#each journal.students as student}
+								{@const stats  = getStats(student.id)}
+								{@const rating = journal.ratings[student.id]}
+								<button
+									class="m-student-card"
+									onclick={() => mobileSelectedStudent = student}
+								>
+									<div class="m-student-card__avatar">
+										{student.name.split(' ').map((w: string) => w[0]).join('').slice(0,2).toUpperCase()}
+									</div>
+									<div class="m-student-card__info">
+										<div class="m-student-card__name">{student.name}</div>
+										<div class="m-student-card__stats">
+											<span class="m-stat" class:m-stat--warn={stats.absentDays > 0}>
+												<svg width="11" height="11" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd"/></svg>
+												{stats.absentDays} пр.
+											</span>
+											{#if rating?.rating_score != null}
+												<span class="m-stat">РР: {rating.rating_score}</span>
+											{/if}
+											{#if rating?.exam_score != null}
+												<span class="m-stat">Экз: {rating.exam_score}</span>
+											{/if}
+										</div>
+									</div>
+									<div class="m-student-card__total"
+											 class:m-total--good={stats.grandTotal >= 60}
+											 class:m-total--warn={stats.grandTotal >= 40 && stats.grandTotal < 60}
+											 class:m-total--bad={stats.grandTotal > 0 && stats.grandTotal < 40}
+									>
+										<div class="m-total__val">{stats.grandTotal}</div>
+										<div class="m-total__label">из 100</div>
+									</div>
+									<svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" style="color:var(--text3);flex-shrink:0"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg>
+								</button>
+							{/each}
+						</div>
+
+						<!-- Панель сохранения на мобилке -->
+						{#if canEdit && (hasChanges || saveSuccess || saveError)}
+							<div class="save-bar save-bar--visible">
+								{#if saveError}
+									<span class="save-bar__error">{saveError}</span>
+								{:else if saveSuccess}
+									<span class="save-bar__success">
+										<svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+										{saveSuccess}
+									</span>
+								{:else}
+									<span class="save-bar__count">Изменений: <strong>{localChanges.size}</strong></span>
+								{/if}
+								<div class="save-bar__actions">
+									{#if hasChanges}
+										<button class="btn btn--ghost btn--sm" onclick={discardChanges}>Отменить</button>
+										<button class="btn btn--primary btn--sm" onclick={saveChanges} disabled={saving}>
+											{#if saving}<span class="spinner"></span>{/if}
+											Сохранить
+										</button>
+									{/if}
+								</div>
+							</div>
+						{/if}
+
+					{:else}
+						<!-- Детальный вид студента -->
+						{@const st     = mobileSelectedStudent}
+						{@const stats  = getStats(st.id)}
+						{@const rating = journal.ratings[st.id]}
+						{@const filled = getStudentFilledDates(st.id)}
+
+						<div class="m-detail">
+							<!-- Шапка студента -->
+							<div class="m-detail__header">
+								<button class="m-back" onclick={() => mobileSelectedStudent = null}>
+									<svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clip-rule="evenodd"/></svg>
+									Все студенты
+								</button>
+								<div class="m-detail__name">{st.name}</div>
+							</div>
+
+							<!-- Итоговые карточки -->
+							<div class="m-summary">
+								<div class="m-summary-card m-summary-card--total">
+									<div class="m-summary-card__val"
+											 class:color-good={stats.grandTotal >= 60}
+											 class:color-warn={stats.grandTotal >= 40 && stats.grandTotal < 60}
+											 class:color-bad={stats.grandTotal > 0 && stats.grandTotal < 40}
+									>{stats.grandTotal}</div>
+									<div class="m-summary-card__label">итого / 100</div>
+								</div>
+								<div class="m-summary-card">
+									<div class="m-summary-card__val" class:color-warn={stats.absentDays > 0}>{stats.absentDays}</div>
+									<div class="m-summary-card__label">пропусков</div>
+								</div>
+								<div class="m-summary-card">
+									<div class="m-summary-card__val">{stats.absentHours}</div>
+									<div class="m-summary-card__label">часов</div>
+								</div>
+								<div class="m-summary-card">
+									<div class="m-summary-card__val">{stats.cappedScore}</div>
+									<div class="m-summary-card__label">за работу</div>
+								</div>
+							</div>
+
+							<!-- Итоговые оценки -->
+							<div class="m-ratings">
+								<button class="m-rating-row" onclick={() => openRatingModal(st.id)}>
+									<span class="m-rating-row__label">Рейтинговая работа</span>
+									<span class="m-rating-row__val" class:has-value={rating?.rating_score != null}>
+										{rating?.rating_score ?? '—'} <span class="m-rating-row__max">/ 30</span>
+									</span>
+									{#if canEdit}<svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/></svg>{/if}
+								</button>
+								<button class="m-rating-row" onclick={() => openRatingModal(st.id)}>
+									<span class="m-rating-row__label">Экзамен</span>
+									<span class="m-rating-row__val" class:has-value={rating?.exam_score != null}>
+										{rating?.exam_score ?? '—'} <span class="m-rating-row__max">/ 30</span>
+									</span>
+									{#if canEdit}<svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/></svg>{/if}
+								</button>
+							</div>
+
+							<!-- Записи по датам -->
+							<div class="m-entries-title">
+								{filled.length > 0 ? `Записей: ${filled.length}` : 'Нет записей в этом семестре'}
+							</div>
+
+							{#if filled.length > 0}
+								<div class="m-entries">
+									{#each filled as date}
+										{@const cell = getCell(st.id, date)}
+										{@const fd   = fmtDate(date)}
+										<div class="m-entry" class:m-entry--today={fd.isToday}>
+											<div class="m-entry__date">{fmtDateShort(date)}</div>
+											<div class="m-entry__tags">
+												{#if cell.is_absent}<span class="cell-tag cell-tag--absent">Н</span>{/if}
+												{#if cell.score != null}<span class="cell-tag cell-tag--score">{cell.score}</span>{/if}
+											</div>
+										</div>
+									{/each}
+								</div>
+							{/if}
+						</div>
 					{/if}
 				</div>
+
 			{/if}
 		</div>
 	</main>
@@ -609,7 +721,7 @@
 
 <!-- МОДАЛКА РЕЙТИНГА -->
 {#if editingRating !== null && editingStudent}
-	<div class="modal-overlay" role="dialog" aria-modal="true">
+	<div class="modal-overlay" onclick={() => editingRating = null} role="dialog" aria-modal="true">
 		<div class="modal" onclick={(e) => e.stopPropagation()}>
 			<div class="modal__header">
 				<div>
