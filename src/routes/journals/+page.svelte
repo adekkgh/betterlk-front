@@ -39,7 +39,7 @@
 	let deleteLoading = $state(false);
 
 	const isStudent = $derived($userStore?.role?.name === 'student');
-	const canManage = $derived(['admin', 'moderator'].includes($userStore?.role?.name ?? ''));
+	const canManage = $derived(['admin', 'moderator', 'professor'].includes($userStore?.role?.name ?? ''));
 	const isAdminOrMod = $derived(['admin', 'moderator'].includes($userStore?.role?.name ?? ''));
 
 	const filtered = $derived(journals.filter(j => {
@@ -59,25 +59,39 @@
 		return sem === 1 ? 'accent' : 'warning';
 	}
 
+	// TODO: refactor
 	async function loadAll() {
 		loading = true;
 		error   = '';
 
-		const [jRes, sRes, gRes, uRes] = await Promise.all([
+		const promises = [
 			api<{ data: Journal[] }>('/journals'),
 			api<{ data: Subject[] }>('/subjects'),
 			api<{ data: Group[] }>('/groups'),
-			api<{ data: any[] }>('/users'),
-		]);
+		];
+
+		if (isAdminOrMod) {
+			promises.push(api<{ data: any[] }>('/users'));
+		}
+
+		const results = await Promise.all(promises);
+		const [jRes, sRes, gRes, uRes] = results.length === 4 ? results : [...results, null];
+
+		// const [jRes, sRes, gRes, uRes] = await Promise.all([
+		// 	api<{ data: Journal[] }>('/journals'),
+		// 	api<{ data: Subject[] }>('/subjects'),
+		// 	api<{ data: Group[] }>('/groups'),
+		// 	api<{ data: any[] }>('/users'),
+		// ]);
 
 		loading = false;
-		if (jRes.error) { error = jRes.error; return; }
+		if (jRes?.error) { error = jRes?.error; return; }
 
-		journals = jRes.data?.data ?? [];
-		subjects = sRes.data?.data ?? [];
-		groups   = gRes.data?.data ?? [];
+		journals = jRes?.data?.data ?? [];
+		subjects = sRes?.data?.data ?? [];
+		groups   = gRes?.data?.data ?? [];
 
-		const allUsers = uRes.data?.data ?? [];
+		const allUsers = uRes?.data?.data ?? [];
 		professors = allUsers
 			.filter((u: any) => u.role?.name === 'professor')
 			.map((u: any) => ({ id: u.id, name: u.name }));
@@ -185,7 +199,7 @@
 						Предметы
 					</a>
 					<a href="/specializations" class="nav-item">
-						<svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor"><path d="M9 4.804A7.968 7.968 0 005.5 4c-1.255 0-2.443.29-3.5.804v10A7.969 7.969 0 015.5 14c1.669 0 3.218.51 4.5 1.385A7.962 7.962 0 0114.5 14c1.255 0 2.443.29 3.5.804v-10A7.968 7.968 0 0014.5 4c-1.255 0-2.443.29-3.5.804V12a1 1 0 11-2 0V4.804z"/></svg>
+						<svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 6V5a3 3 0 013-3h2a3 3 0 013 3v1h2a2 2 0 012 2v3.57A22.952 22.952 0 0110 13a22.95 22.95 0 01-8-1.43V8a2 2 0 012-2h2zm2-1a1 1 0 011-1h2a1 1 0 011 1v1H8V5zm1 5a1 1 0 011-1h.01a1 1 0 110 2H10a1 1 0 01-1-1z" clip-rule="evenodd"/><path d="M2 13.692V16a2 2 0 002 2h12a2 2 0 002-2v-2.308A24.974 24.974 0 0110 15c-2.796 0-5.487-.46-8-1.308z"/></svg>
 						Специальности
 					</a>
 				</div>
@@ -196,6 +210,10 @@
 					<a href="/groups" class="nav-item">
 						<svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v1h8v-1zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-1a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v1h-3zM4.75 14.094A5.973 5.973 0 004 17v1H1v-1a3 3 0 013.75-2.906z"/></svg>
 						Группы
+					</a>
+					<a href="/subjects" class="nav-item">
+						<svg class="nav-item__icon" viewBox="0 0 20 20" fill="currentColor"><path d="M9 4.804A7.968 7.968 0 005.5 4c-1.255 0-2.443.29-3.5.804v10A7.969 7.969 0 015.5 14c1.669 0 3.218.51 4.5 1.385A7.962 7.962 0 0114.5 14c1.255 0 2.443.29 3.5.804v-10A7.968 7.968 0 0014.5 4c-1.255 0-2.443.29-3.5.804V12a1 1 0 11-2 0V4.804z"/></svg>
+						Предметы
 					</a>
 				</div>
 			{/if}
@@ -232,12 +250,12 @@
 			<div class="topbar__actions">
 				<div class="search-wrap">
 					<svg class="search-icon" width="15" height="15" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/></svg>
-					<input class="search-input" type="text" placeholder="Поиск журнала..." bind:value={search} />
+					<input class="search-input" type="text" placeholder="Поиск ведомости..." bind:value={search} />
 				</div>
 				{#if canManage}
 					<button class="btn btn--primary" onclick={openForm}>
 						<svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd"/></svg>
-						Создать журнал
+						Создать ведомость
 					</button>
 				{/if}
 			</div>
@@ -277,9 +295,9 @@
 					<div class="state-icon">
 						<svg width="28" height="28" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd"/></svg>
 					</div>
-					<p>Журналов нет</p>
+					<p>Ведомостей нет</p>
 					{#if canManage && !search}
-						<button class="btn btn--primary" onclick={openForm}>Создать первый журнал</button>
+						<button class="btn btn--primary" onclick={openForm}>Создать первую ведомость</button>
 					{/if}
 				</div>
 			{:else}
@@ -325,7 +343,7 @@
 	<div class="modal-overlay" role="dialog">
 		<div class="modal" onclick={(e) => e.stopPropagation()}>
 			<div class="modal__header">
-				<h2 class="modal__title">Создать журнал</h2>
+				<h2 class="modal__title">Создать ведомость</h2>
 				<button class="modal__close" onclick={() => showForm = false}>
 					<svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
 				</button>
@@ -351,13 +369,19 @@
 					</select>
 				</div>
 
-				{#if isAdminOrMod}
+				{#if canManage}
 					<div class="form-group">
 						<label class="form-label">Преподаватель *</label>
-						<select class="form-input" bind:value={formProfId}>
-							<option value={null}>Выберите преподавателя</option>
-							{#each professors as p}<option value={p.id}>{p.name}</option>{/each}
-						</select>
+						{#if isAdminOrMod}
+							<select class="form-input" bind:value={formProfId}>
+								<option value={null}>Выберите преподавателя</option>
+								{#each professors as p}<option value={p.id}>{p.name}</option>{/each}
+							</select>
+						{:else}
+							<select class="form-input" bind:value={formProfId}>
+								<option value={$userStore.id}>{$userStore.name}</option>
+							</select>
+						{/if}
 					</div>
 				{/if}
 
@@ -379,7 +403,7 @@
 					<button class="btn btn--ghost" onclick={() => showForm = false}>Отмена</button>
 					<button class="btn btn--primary" onclick={handleFormSubmit} disabled={formLoading}>
 						{#if formLoading}<span class="spinner"></span>{/if}
-						Создать журнал
+						Создать ведомость
 					</button>
 				</div>
 			</div>
@@ -392,14 +416,14 @@
 	<div class="modal-overlay" onclick={() => deletingId = null} role="dialog">
 		<div class="modal modal--sm" onclick={(e) => e.stopPropagation()}>
 			<div class="modal__header">
-				<h2 class="modal__title">Удалить журнал?</h2>
+				<h2 class="modal__title">Удалить ведомость?</h2>
 				<button class="modal__close" onclick={() => deletingId = null}>
 					<svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
 				</button>
 			</div>
 			<div class="modal__body">
 				<p style="font-size:14px;color:var(--text2);line-height:1.6;">
-					Все записи этого журнала будут удалены безвозвратно.
+					Все записи этой ведомости будут удалены безвозвратно.
 				</p>
 				<div class="modal__footer">
 					<button class="btn btn--ghost" onclick={() => deletingId = null}>Отмена</button>
