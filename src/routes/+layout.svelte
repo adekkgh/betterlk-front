@@ -17,4 +17,7 @@
 </script>
 
 <slot />
-<MobileNav />
+
+{#if $userStore}
+	<MobileNav />
+{/if}
